@@ -24,6 +24,7 @@ interface AnalysisResult {
   loading: Record<string, boolean>;
   errors: Record<string, string | null>;
   analyze: (address: string) => Promise<void>;
+  changeTimeframe: (timeframe: string) => Promise<void>;
   isAnalyzing: boolean;
 }
 
@@ -69,8 +70,29 @@ export function useTokenAnalysis(): AnalysisResult {
   const setErrorKey = (key: string, value: string | null) =>
     setErrors((prev) => ({ ...prev, [key]: value }));
 
+  const [currentAddress, setCurrentAddress] = useState<string | null>(null);
+
+  const fetchAndSet = useCallback(async <T>(
+    key: string,
+    url: string,
+    setter: (data: T) => void
+  ): Promise<T | null> => {
+    try {
+      setLoadingKey(key, true);
+      const data = await fetchSection<T>(url);
+      setter(data);
+      return data;
+    } catch (err) {
+      setErrorKey(key, err instanceof Error ? err.message : "Failed to fetch");
+      return null;
+    } finally {
+      setLoadingKey(key, false);
+    }
+  }, []);
+
   const analyze = useCallback(async (address: string) => {
     // Reset state
+    setCurrentAddress(address);
     setTokenInfo(null);
     setHolders(null);
     setLiquidity(null);
@@ -98,25 +120,6 @@ export function useTokenAnalysis(): AnalysisResult {
 
     const q = `address=${encodeURIComponent(address)}`;
 
-    // Fetch all sections in parallel, update state as each resolves
-    const fetchAndSet = async <T>(
-      key: string,
-      url: string,
-      setter: (data: T) => void
-    ): Promise<T | null> => {
-      try {
-        setLoadingKey(key, true);
-        const data = await fetchSection<T>(url);
-        setter(data);
-        return data;
-      } catch (err) {
-        setErrorKey(key, err instanceof Error ? err.message : "Failed to fetch");
-        return null;
-      } finally {
-        setLoadingKey(key, false);
-      }
-    };
-
     const results = await Promise.all([
       fetchAndSet<TokenInfo>("tokenInfo", `/api/token-info?${q}`, setTokenInfo),
       fetchAndSet<HolderAnalysis>("holders", `/api/holders?${q}`, setHolders),
@@ -132,7 +135,17 @@ export function useTokenAnalysis(): AnalysisResult {
     const riskAssessment = computeRisk(ti, ho, liq, sec, soc);
     setRisk(riskAssessment);
     setIsAnalyzing(false);
-  }, []);
+  }, [fetchAndSet]);
+
+  const changeTimeframe = useCallback(async (timeframe: string) => {
+    if (!currentAddress) return;
+    const q = `address=${encodeURIComponent(currentAddress)}&timeframe=${timeframe}`;
+    await fetchAndSet<TransactionMetrics>(
+      "transactions",
+      `/api/transactions?${q}`,
+      setTransactions
+    );
+  }, [currentAddress, fetchAndSet]);
 
   return {
     tokenInfo,
@@ -145,6 +158,7 @@ export function useTokenAnalysis(): AnalysisResult {
     loading,
     errors,
     analyze,
+    changeTimeframe,
     isAnalyzing,
   };
 }

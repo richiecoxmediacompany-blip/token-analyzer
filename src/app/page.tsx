@@ -19,6 +19,7 @@ export default function Home() {
     loading,
     errors,
     analyze,
+    changeTimeframe,
     isAnalyzing,
   } = useTokenAnalysis();
 
@@ -114,6 +115,7 @@ export default function Home() {
             risk={risk}
             loading={loading}
             errors={errors}
+            onTimeframeChange={changeTimeframe}
           />
         )}
       </main>
