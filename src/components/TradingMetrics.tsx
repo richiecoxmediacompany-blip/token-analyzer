@@ -14,8 +14,8 @@ import type { TransactionMetrics, PricePoint } from "@/types";
 import { formatNumber, formatLargeNumber } from "@/lib/utils";
 import PriceChart from "./PriceChart";
 
-const POLL_INTERVAL = 5_000; // 5s for real-time feel
-const TICK_INTERVAL = 1_000; // Simulate micro-ticks every 1s between polls
+const OHLCV_POLL_INTERVAL = 30_000; // Full candle refresh every 30s
+const TICK_INTERVAL = 3_000; // Fetch live price tick every 3s
 
 interface TradingMetricsProps {
   metrics: TransactionMetrics;
@@ -23,25 +23,20 @@ interface TradingMetricsProps {
 }
 
 /**
- * Simulate a small price tick on the latest candle to make the chart
- * feel alive between API polls. Uses a tiny random walk bounded by
- * the candle's existing high/low range.
+ * Apply a real price tick from DexScreener to the latest candle.
+ * Updates close, high, low in-place so the chart visibly moves.
  */
-function simulateTick(data: PricePoint[]): PricePoint[] {
-  if (data.length === 0) return data;
+function applyPriceTick(
+  data: PricePoint[],
+  price: number
+): PricePoint[] {
+  if (data.length === 0 || price <= 0) return data;
   const copy = [...data];
   const last = { ...copy[copy.length - 1] };
 
-  // Random walk: ±0.15% max per tick
-  const range = last.high - last.low || last.close * 0.001;
-  const jitter = (Math.random() - 0.5) * range * 0.03;
-  const newClose = last.close + jitter;
-
-  last.close = newClose;
-  last.high = Math.max(last.high, newClose);
-  last.low = Math.min(last.low, newClose);
-  // Small volume bump
-  last.volume = last.volume + Math.random() * last.volume * 0.002;
+  last.close = price;
+  last.high = Math.max(last.high, price);
+  last.low = Math.min(last.low, price);
 
   copy[copy.length - 1] = last;
   return copy;
@@ -78,29 +73,46 @@ export default function TradingMetrics({
     }
   }, [tokenAddress]);
 
-  // API polling
+  // Full OHLCV candle refresh (slower, heavier)
   useEffect(() => {
     if (isLive) {
       pollRef.current = setInterval(() => {
         fetchChart(timeframeRef.current, true);
-      }, POLL_INTERVAL);
+      }, OHLCV_POLL_INTERVAL);
     }
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [isLive, fetchChart]);
 
-  // Simulated micro-ticks for live feel
+  // Real-time price ticks from DexScreener (fast, lightweight)
   useEffect(() => {
-    if (isLive) {
-      tickRef.current = setInterval(() => {
-        setChartData((prev) => simulateTick(prev));
-      }, TICK_INTERVAL);
-    }
+    if (!isLive) return;
+
+    const fetchTick = async () => {
+      try {
+        const res = await fetch(
+          `/api/price-tick?address=${encodeURIComponent(tokenAddress)}`
+        );
+        if (res.ok) {
+          const tick = await res.json();
+          if (tick.price && tick.price > 0) {
+            setChartData((prev) => applyPriceTick(prev, tick.price));
+          }
+        }
+      } catch {
+        // Silently skip failed ticks
+      }
+    };
+
+    // Fetch immediately on mount, then every TICK_INTERVAL
+    fetchTick();
+    tickRef.current = setInterval(fetchTick, TICK_INTERVAL);
+
     return () => {
       if (tickRef.current) clearInterval(tickRef.current);
     };
-  }, [isLive]);
+  }, [isLive, tokenAddress]);
 
   useEffect(() => {
     setChartData(metrics.priceHistory);
