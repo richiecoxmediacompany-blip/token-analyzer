@@ -24,7 +24,7 @@ interface AnalysisResult {
   loading: Record<string, boolean>;
   errors: Record<string, string | null>;
   analyze: (address: string) => Promise<void>;
-  changeTimeframe: (timeframe: string) => Promise<void>;
+  currentAddress: string | null;
   isAnalyzing: boolean;
 }
 
@@ -137,16 +137,6 @@ export function useTokenAnalysis(): AnalysisResult {
     setIsAnalyzing(false);
   }, [fetchAndSet]);
 
-  const changeTimeframe = useCallback(async (timeframe: string) => {
-    if (!currentAddress) return;
-    const q = `address=${encodeURIComponent(currentAddress)}&timeframe=${timeframe}`;
-    await fetchAndSet<TransactionMetrics>(
-      "transactions",
-      `/api/transactions?${q}`,
-      setTransactions
-    );
-  }, [currentAddress, fetchAndSet]);
-
   return {
     tokenInfo,
     holders,
@@ -158,7 +148,7 @@ export function useTokenAnalysis(): AnalysisResult {
     loading,
     errors,
     analyze,
-    changeTimeframe,
+    currentAddress,
     isAnalyzing,
   };
 }

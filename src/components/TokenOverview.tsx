@@ -31,7 +31,7 @@ export default function TokenOverview({ token }: TokenOverviewProps) {
   };
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+    <div className="bg-[#0d0d20] border border-white/5 rounded-2xl p-6">
       <div className="flex flex-col sm:flex-row items-start gap-6">
         {/* Token Logo & Name */}
         <div className="flex items-center gap-4">
@@ -39,49 +39,51 @@ export default function TokenOverview({ token }: TokenOverviewProps) {
             <img
               src={token.logo}
               alt={token.name}
-              className="w-16 h-16 rounded-full bg-gray-800"
+              className="w-14 h-14 rounded-2xl bg-white/5 ring-2 ring-white/10"
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = "none";
               }}
             />
           ) : (
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center text-2xl font-bold text-white">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-2xl font-bold text-white ring-2 ring-white/10">
               {token.symbol.charAt(0)}
             </div>
           )}
           <div>
             <h1 className="text-2xl font-bold text-white">{token.name}</h1>
-            <p className="text-gray-400 text-lg">{token.symbol}</p>
+            <p className="text-gray-500 text-sm font-medium">{token.symbol}</p>
           </div>
         </div>
 
         {/* Price */}
         <div className="sm:ml-auto text-right">
-          <p className="text-3xl font-bold text-white">
+          <p className="text-3xl font-bold text-white tracking-tight">
             {formatPrice(token.price)}
           </p>
           <div
-            className={`flex items-center gap-1 justify-end ${
-              isPositive ? "text-green-400" : "text-red-400"
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg mt-1 ${
+              isPositive
+                ? "bg-emerald-500/10 text-emerald-400"
+                : "bg-red-500/10 text-red-400"
             }`}
           >
             {isPositive ? (
-              <TrendingUp className="w-4 h-4" />
+              <TrendingUp className="w-3.5 h-3.5" />
             ) : (
-              <TrendingDown className="w-4 h-4" />
+              <TrendingDown className="w-3.5 h-3.5" />
             )}
-            <span className="font-semibold">
+            <span className="font-semibold text-sm">
               {formatPercentage(token.priceChange24h)}
             </span>
-            <span className="text-gray-500 text-sm">24h</span>
+            <span className="text-gray-500 text-xs">24h</span>
           </div>
         </div>
       </div>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
         <MetricItem label="Market Cap" value={formatLargeNumber(token.marketCap)} />
-        <MetricItem label="FDV" value={formatLargeNumber(token.fdv)} tooltip="Fully Diluted Valuation - total supply multiplied by current price" />
+        <MetricItem label="FDV" value={formatLargeNumber(token.fdv)} />
         <MetricItem label="24h Volume" value={formatLargeNumber(token.volume24h)} />
         <MetricItem
           label="Vol/MCap"
@@ -95,15 +97,15 @@ export default function TokenOverview({ token }: TokenOverviewProps) {
 
       {/* Contract Address */}
       <div className="mt-6 flex flex-col sm:flex-row items-start sm:items-center gap-3">
-        <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-4 py-2 font-mono text-sm text-gray-300 flex-1 min-w-0">
+        <div className="flex items-center gap-2 bg-white/[0.03] border border-white/5 rounded-xl px-4 py-2.5 font-mono text-sm text-gray-400 flex-1 min-w-0">
           <span className="truncate">{token.address}</span>
           <button
             onClick={copyAddress}
-            className="text-gray-500 hover:text-white transition-colors flex-shrink-0"
+            className="text-gray-600 hover:text-white transition-colors flex-shrink-0"
             title="Copy address"
           >
             {copied ? (
-              <Check className="w-4 h-4 text-green-400" />
+              <Check className="w-4 h-4 text-emerald-400" />
             ) : (
               <Copy className="w-4 h-4" />
             )}
@@ -121,7 +123,7 @@ export default function TokenOverview({ token }: TokenOverviewProps) {
           />
           <ExternalLinkButton
             href={`https://dexscreener.com/solana/${token.address}`}
-            label="DexScreener"
+            label="DEX"
           />
         </div>
       </div>
@@ -132,16 +134,14 @@ export default function TokenOverview({ token }: TokenOverviewProps) {
 function MetricItem({
   label,
   value,
-  tooltip,
 }: {
   label: string;
   value: string;
-  tooltip?: string;
 }) {
   return (
-    <div className="bg-gray-800/50 rounded-lg p-3" title={tooltip}>
-      <p className="text-xs text-gray-500 uppercase tracking-wide">{label}</p>
-      <p className="text-lg font-semibold text-white mt-1">{value}</p>
+    <div className="bg-white/[0.03] border border-white/5 rounded-xl p-3">
+      <p className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">{label}</p>
+      <p className="text-lg font-bold text-white mt-0.5">{value}</p>
     </div>
   );
 }
@@ -158,7 +158,7 @@ function ExternalLinkButton({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-center gap-1 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white text-xs rounded-lg transition-colors border border-gray-700"
+      className="flex items-center gap-1.5 px-3 py-2 bg-white/[0.03] hover:bg-white/[0.06] text-gray-400 hover:text-white text-xs rounded-xl transition-colors border border-white/5"
     >
       {label}
       <ExternalLink className="w-3 h-3" />

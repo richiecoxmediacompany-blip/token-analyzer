@@ -29,7 +29,7 @@ interface AnalysisDashboardProps {
   risk: RiskAssessment | null;
   loading: Record<string, boolean>;
   errors: Record<string, string | null>;
-  onTimeframeChange?: (timeframe: string) => void;
+  tokenAddress: string | null;
 }
 
 export default function AnalysisDashboard({
@@ -42,11 +42,11 @@ export default function AnalysisDashboard({
   risk,
   loading,
   errors,
-  onTimeframeChange,
+  tokenAddress,
 }: AnalysisDashboardProps) {
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      {/* Risk Assessment - Most prominent */}
+      {/* Risk Assessment */}
       {risk ? (
         <RiskBadge risk={risk} />
       ) : (
@@ -73,11 +73,10 @@ export default function AnalysisDashboard({
 
       {/* Trading Metrics - Full width */}
       <Section loading={loading.transactions} error={errors.transactions}>
-        {transactions && tokenInfo && (
+        {transactions && tokenAddress && (
           <TradingMetrics
             metrics={transactions}
-            tokenAddress={tokenInfo.address}
-            onTimeframeChange={onTimeframeChange}
+            tokenAddress={tokenAddress}
           />
         )}
       </Section>
@@ -116,7 +115,7 @@ function Section({
 
   if (error) {
     return (
-      <div className="bg-gray-900 border border-red-900/50 rounded-xl p-6">
+      <div className="bg-[#0d0d20] border border-red-900/30 rounded-2xl p-6">
         <p className="text-red-400 text-sm">Error: {error}</p>
       </div>
     );
