@@ -15,31 +15,11 @@ import { formatNumber, formatLargeNumber } from "@/lib/utils";
 import PriceChart from "./PriceChart";
 
 const OHLCV_POLL_INTERVAL = 30_000; // Full candle refresh every 30s
-const TICK_INTERVAL = 3_000; // Fetch live price tick every 3s
+const TICK_INTERVAL = 3_000; // Fetch live price every 3s
 
 interface TradingMetricsProps {
   metrics: TransactionMetrics;
   tokenAddress: string;
-}
-
-/**
- * Apply a real price tick from DexScreener to the latest candle.
- * Updates close, high, low in-place so the chart visibly moves.
- */
-function applyPriceTick(
-  data: PricePoint[],
-  price: number
-): PricePoint[] {
-  if (data.length === 0 || price <= 0) return data;
-  const copy = [...data];
-  const last = { ...copy[copy.length - 1] };
-
-  last.close = price;
-  last.high = Math.max(last.high, price);
-  last.low = Math.min(last.low, price);
-
-  copy[copy.length - 1] = last;
-  return copy;
 }
 
 export default function TradingMetrics({
@@ -48,6 +28,8 @@ export default function TradingMetrics({
 }: TradingMetricsProps) {
   const [timeframe, setTimeframe] = useState("24h");
   const [chartData, setChartData] = useState<PricePoint[]>(metrics.priceHistory);
+  const [livePrice, setLivePrice] = useState<number | null>(null);
+  const [priceChange, setPriceChange] = useState<number | null>(null);
   const [chartLoading, setChartLoading] = useState(false);
   const [isLive, setIsLive] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -73,7 +55,7 @@ export default function TradingMetrics({
     }
   }, [tokenAddress]);
 
-  // Full OHLCV candle refresh (slower, heavier)
+  // Full OHLCV candle refresh
   useEffect(() => {
     if (isLive) {
       pollRef.current = setInterval(() => {
@@ -85,7 +67,7 @@ export default function TradingMetrics({
     };
   }, [isLive, fetchChart]);
 
-  // Real-time price ticks from DexScreener (fast, lightweight)
+  // Real-time price ticks from DexScreener
   useEffect(() => {
     if (!isLive) return;
 
@@ -97,15 +79,15 @@ export default function TradingMetrics({
         if (res.ok) {
           const tick = await res.json();
           if (tick.price && tick.price > 0) {
-            setChartData((prev) => applyPriceTick(prev, tick.price));
+            setLivePrice(tick.price);
+            setPriceChange(tick.change5m ?? tick.change1h ?? null);
           }
         }
       } catch {
-        // Silently skip failed ticks
+        // Silently skip
       }
     };
 
-    // Fetch immediately on mount, then every TICK_INTERVAL
     fetchTick();
     tickRef.current = setInterval(fetchTick, TICK_INTERVAL);
 
@@ -116,6 +98,7 @@ export default function TradingMetrics({
 
   useEffect(() => {
     setChartData(metrics.priceHistory);
+    setLivePrice(null);
   }, [tokenAddress, metrics.priceHistory]);
 
   const handleTimeframeChange = useCallback(async (tf: string) => {
@@ -127,6 +110,15 @@ export default function TradingMetrics({
     metrics.buyCount + metrics.sellCount > 0
       ? (metrics.buyCount / (metrics.buyCount + metrics.sellCount)) * 100
       : 50;
+
+  // Format tiny prices properly (like BONK at 0.00002)
+  const formatPrice = (p: number) => {
+    if (p === 0) return "$0";
+    if (p < 0.0001) return `$${p.toFixed(8)}`;
+    if (p < 0.01) return `$${p.toFixed(6)}`;
+    if (p < 1) return `$${p.toFixed(4)}`;
+    return `$${p.toFixed(2)}`;
+  };
 
   return (
     <div className="card-3d rounded-2xl overflow-hidden">
@@ -142,6 +134,19 @@ export default function TradingMetrics({
               <p className="text-[10px] text-gray-500 uppercase tracking-wider">24h Overview</p>
             </div>
           </div>
+          {/* Live price display */}
+          {livePrice !== null && (
+            <div className="text-right">
+              <div className="text-lg font-bold text-white font-mono">
+                {formatPrice(livePrice)}
+              </div>
+              {priceChange !== null && (
+                <div className={`text-xs font-medium ${priceChange >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {priceChange >= 0 ? "+" : ""}{priceChange.toFixed(2)}% (5m)
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Metric cards */}
@@ -238,7 +243,7 @@ export default function TradingMetrics({
               </div>
             </div>
           )}
-          <PriceChart data={chartData} />
+          <PriceChart data={chartData} livePrice={livePrice} />
         </div>
       </div>
     </div>

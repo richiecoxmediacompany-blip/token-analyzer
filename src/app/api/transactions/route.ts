@@ -190,7 +190,7 @@ async function fetchPriceHistory(
     }>(
       geckoUrl,
       { headers: { Accept: "application/json" } },
-      30_000
+      10_000 // 10s cache for fresher candle data
     );
 
     const ohlcvList = geckoData?.data?.attributes?.ohlcv_list;

@@ -3,9 +3,8 @@ import { cachedFetch } from "@/lib/api-client";
 import { isValidSolanaAddress } from "@/lib/utils";
 
 /**
- * Lightweight endpoint that returns only the latest price + 24h change
- * from DexScreener. Cached for only 3 seconds so the chart gets fresh
- * real-time ticks on every poll.
+ * Lightweight endpoint that returns the latest price from DexScreener.
+ * No caching — every call fetches fresh data for true real-time.
  */
 export async function GET(request: NextRequest) {
   const address = request.nextUrl.searchParams.get("address");
@@ -18,18 +17,20 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const data = await cachedFetch<{
-      pairs?: Array<{
-        priceUsd?: string;
-        priceChange?: { h1?: number; h24?: number };
-        volume?: { h24?: number };
-        txns?: { h1?: { buys?: number; sells?: number } };
-      }>;
-    }>(
+    // Bypass the cache entirely for real-time ticks
+    const response = await fetch(
       `https://api.dexscreener.com/latest/dex/tokens/${address}`,
-      {},
-      3_000 // 3 second cache — near real-time
+      {
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+      }
     );
+
+    if (!response.ok) {
+      return NextResponse.json({ price: null });
+    }
+
+    const data = await response.json();
 
     if (!data.pairs || data.pairs.length === 0) {
       return NextResponse.json({ price: null });
@@ -38,6 +39,7 @@ export async function GET(request: NextRequest) {
     const pair = data.pairs[0];
     const price = parseFloat(pair.priceUsd || "0");
     const change1h = pair.priceChange?.h1 ?? 0;
+    const change5m = pair.priceChange?.m5 ?? 0;
     const volume24h = pair.volume?.h24 ?? 0;
     const buys1h = pair.txns?.h1?.buys ?? 0;
     const sells1h = pair.txns?.h1?.sells ?? 0;
@@ -45,6 +47,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       price,
       change1h,
+      change5m,
       volume24h,
       buys1h,
       sells1h,

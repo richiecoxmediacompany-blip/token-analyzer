@@ -13,6 +13,7 @@ import type { PricePoint } from "@/types";
 
 interface PriceChartProps {
   data: PricePoint[];
+  livePrice?: number | null;
 }
 
 function toTime(ts: number): Time {
@@ -22,16 +23,16 @@ function toTime(ts: number): Time {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySeries = any;
 
-export default function PriceChart({ data }: PriceChartProps) {
+export default function PriceChart({ data, livePrice }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<AnySeries>(null);
   const volumeSeriesRef = useRef<AnySeries>(null);
-  const prevDataLenRef = useRef(0);
-  const initializedRef = useRef(false);
+  const fittedRef = useRef(false);
+  const lastDataIdRef = useRef("");
 
-  // Create chart once
-  const initChart = useCallback(() => {
+  // Create chart once on mount
+  useEffect(() => {
     if (!containerRef.current || chartRef.current) return;
 
     const chart = createChart(containerRef.current, {
@@ -111,17 +112,11 @@ export default function PriceChart({ data }: PriceChartProps) {
       chartRef.current = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
-      initializedRef.current = false;
+      fittedRef.current = false;
     };
   }, []);
 
-  // Initialize chart on mount
-  useEffect(() => {
-    const cleanup = initChart();
-    return cleanup;
-  }, [initChart]);
-
-  // Update data incrementally
+  // Update candle + volume data whenever data changes
   useEffect(() => {
     const candleSeries = candleSeriesRef.current;
     const volumeSeries = volumeSeriesRef.current;
@@ -129,63 +124,52 @@ export default function PriceChart({ data }: PriceChartProps) {
     if (!candleSeries || !volumeSeries || !chart || !data || data.length === 0)
       return;
 
-    const prevLen = prevDataLenRef.current;
+    // Build a simple id to detect if the base dataset changed (timeframe switch)
+    const dataId = `${data.length}:${data[0]?.timestamp}:${data[data.length - 1]?.timestamp}`;
+    const isNewDataset = dataId !== lastDataIdRef.current;
+    lastDataIdRef.current = dataId;
 
-    // Full reset if data changed shape (e.g. timeframe switch) or first load
-    if (
-      !initializedRef.current ||
-      prevLen === 0 ||
-      data.length < prevLen - 2
-    ) {
-      const candleData = data.map((d) => ({
-        time: toTime(d.timestamp),
-        open: d.open,
-        high: d.high,
-        low: d.low,
-        close: d.close,
-      }));
+    const candleData = data.map((d) => ({
+      time: toTime(d.timestamp),
+      open: d.open,
+      high: d.high,
+      low: d.low,
+      close: d.close,
+    }));
 
-      const volumeData = data.map((d) => ({
-        time: toTime(d.timestamp),
-        value: d.volume,
-        color:
-          d.close >= d.open
-            ? "rgba(34,197,94,0.25)"
-            : "rgba(239,68,68,0.25)",
-      }));
+    const volumeData = data.map((d) => ({
+      time: toTime(d.timestamp),
+      value: d.volume,
+      color:
+        d.close >= d.open
+          ? "rgba(34,197,94,0.25)"
+          : "rgba(239,68,68,0.25)",
+    }));
 
-      candleSeries.setData(candleData);
-      volumeSeries.setData(volumeData);
+    candleSeries.setData(candleData);
+    volumeSeries.setData(volumeData);
+
+    // Only fitContent on first load or timeframe switch
+    if (!fittedRef.current || isNewDataset) {
       chart.timeScale().fitContent();
-      initializedRef.current = true;
-    } else {
-      // Incremental update: update changed candles at the end
-      // Find how many candles are new/updated (at least the last one)
-      const updateCount = Math.max(1, data.length - prevLen + 1);
-      const startIdx = Math.max(0, data.length - updateCount);
-
-      for (let i = startIdx; i < data.length; i++) {
-        const d = data[i];
-        candleSeries.update({
-          time: toTime(d.timestamp),
-          open: d.open,
-          high: d.high,
-          low: d.low,
-          close: d.close,
-        });
-        volumeSeries.update({
-          time: toTime(d.timestamp),
-          value: d.volume,
-          color:
-            d.close >= d.open
-              ? "rgba(34,197,94,0.25)"
-              : "rgba(239,68,68,0.25)",
-        });
-      }
+      fittedRef.current = true;
     }
-
-    prevDataLenRef.current = data.length;
   }, [data]);
+
+  // Update just the last candle with live price (fast, no full setData)
+  useEffect(() => {
+    const candleSeries = candleSeriesRef.current;
+    if (!candleSeries || !livePrice || livePrice <= 0 || !data || data.length === 0) return;
+
+    const last = data[data.length - 1];
+    candleSeries.update({
+      time: toTime(last.timestamp),
+      open: last.open,
+      high: Math.max(last.high, livePrice),
+      low: Math.min(last.low, livePrice),
+      close: livePrice,
+    });
+  }, [livePrice, data]);
 
   if (!data || data.length === 0) {
     return (
