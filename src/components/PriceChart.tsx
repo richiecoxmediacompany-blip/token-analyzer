@@ -1,5 +1,14 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+import {
+  createChart,
+  ColorType,
+  CrosshairMode,
+  CandlestickSeries,
+  HistogramSeries,
+} from "lightweight-charts";
+import type { IChartApi, Time } from "lightweight-charts";
 import type { PricePoint } from "@/types";
 
 interface PriceChartProps {
@@ -7,120 +16,123 @@ interface PriceChartProps {
 }
 
 export default function PriceChart({ data }: PriceChartProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current || !data || data.length === 0) return;
+
+    // Clean up existing chart
+    if (chartRef.current) {
+      chartRef.current.remove();
+      chartRef.current = null;
+    }
+
+    const chart = createChart(containerRef.current, {
+      width: containerRef.current.clientWidth,
+      height: 400,
+      layout: {
+        background: { type: ColorType.Solid, color: "transparent" },
+        textColor: "#64748b",
+        fontFamily: "system-ui, -apple-system, sans-serif",
+        fontSize: 11,
+      },
+      grid: {
+        vertLines: { color: "rgba(255,255,255,0.03)" },
+        horzLines: { color: "rgba(255,255,255,0.03)" },
+      },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        vertLine: {
+          color: "rgba(147, 51, 234, 0.3)",
+          width: 1,
+          style: 2,
+          labelBackgroundColor: "#7c3aed",
+        },
+        horzLine: {
+          color: "rgba(147, 51, 234, 0.3)",
+          width: 1,
+          style: 2,
+          labelBackgroundColor: "#7c3aed",
+        },
+      },
+      rightPriceScale: {
+        borderColor: "rgba(255,255,255,0.05)",
+        scaleMargins: { top: 0.1, bottom: 0.25 },
+      },
+      timeScale: {
+        borderColor: "rgba(255,255,255,0.05)",
+        timeVisible: true,
+        secondsVisible: false,
+        rightOffset: 5,
+        barSpacing: 8,
+      },
+      handleScroll: { vertTouchDrag: false },
+    });
+
+    const candleSeries = chart.addSeries(CandlestickSeries, {
+      upColor: "#22c55e",
+      downColor: "#ef4444",
+      borderUpColor: "#22c55e",
+      borderDownColor: "#ef4444",
+      wickUpColor: "#22c55e",
+      wickDownColor: "#ef4444",
+    });
+
+    const volumeSeries = chart.addSeries(HistogramSeries, {
+      priceFormat: { type: "volume" },
+      priceScaleId: "volume",
+    });
+
+    chart.priceScale("volume").applyOptions({
+      scaleMargins: { top: 0.8, bottom: 0 },
+    });
+
+    const candleData = data.map((d) => ({
+      time: (d.timestamp / 1000) as Time,
+      open: d.open,
+      high: d.high,
+      low: d.low,
+      close: d.close,
+    }));
+
+    const volumeData = data.map((d) => ({
+      time: (d.timestamp / 1000) as Time,
+      value: d.volume,
+      color: d.close >= d.open ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)",
+    }));
+
+    candleSeries.setData(candleData);
+    volumeSeries.setData(volumeData);
+    chart.timeScale().fitContent();
+
+    chartRef.current = chart;
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (containerRef.current) {
+        chart.applyOptions({ width: containerRef.current.clientWidth });
+      }
+    });
+    resizeObserver.observe(containerRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+      chart.remove();
+      chartRef.current = null;
+    };
+  }, [data]);
+
   if (!data || data.length === 0) {
     return (
-      <div className="h-64 flex items-center justify-center text-gray-500 bg-gray-800/30 rounded-lg">
+      <div className="h-[400px] flex items-center justify-center text-gray-600 glass-card rounded-2xl">
         No price data available
       </div>
     );
   }
 
-  // Calculate chart bounds
-  const prices = data.map((d) => d.close);
-  const volumes = data.map((d) => d.volume);
-  const minPrice = Math.min(...prices);
-  const maxPrice = Math.max(...prices);
-  const maxVolume = Math.max(...volumes, 1);
-  const priceRange = maxPrice - minPrice || 1;
-
-  const chartWidth = 800;
-  const chartHeight = 200;
-  const volumeHeight = 50;
-  const totalHeight = chartHeight + volumeHeight;
-
-  // Determine if price went up or down overall
-  const isPositive = prices[prices.length - 1] >= prices[0];
-
-  // Build SVG path for price line
-  const pricePoints = data.map((d, i) => {
-    const x = (i / (data.length - 1)) * chartWidth;
-    const y = chartHeight - ((d.close - minPrice) / priceRange) * (chartHeight - 20) - 10;
-    return `${x},${y}`;
-  });
-
-  const linePath = `M ${pricePoints.join(" L ")}`;
-  const areaPath = `${linePath} L ${chartWidth},${chartHeight} L 0,${chartHeight} Z`;
-
   return (
-    <div className="w-full overflow-hidden">
-      <svg
-        viewBox={`0 0 ${chartWidth} ${totalHeight}`}
-        className="w-full"
-        preserveAspectRatio="none"
-      >
-        <defs>
-          <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop
-              offset="0%"
-              stopColor={isPositive ? "#22c55e" : "#ef4444"}
-              stopOpacity="0.3"
-            />
-            <stop
-              offset="100%"
-              stopColor={isPositive ? "#22c55e" : "#ef4444"}
-              stopOpacity="0"
-            />
-          </linearGradient>
-        </defs>
-
-        {/* Grid lines */}
-        {[0, 0.25, 0.5, 0.75, 1].map((pct) => (
-          <line
-            key={pct}
-            x1="0"
-            y1={10 + (chartHeight - 20) * pct}
-            x2={chartWidth}
-            y2={10 + (chartHeight - 20) * pct}
-            stroke="#374151"
-            strokeWidth="0.5"
-            strokeDasharray="4"
-          />
-        ))}
-
-        {/* Price area fill */}
-        <path d={areaPath} fill="url(#priceGradient)" />
-
-        {/* Price line */}
-        <path
-          d={linePath}
-          fill="none"
-          stroke={isPositive ? "#22c55e" : "#ef4444"}
-          strokeWidth="2"
-        />
-
-        {/* Volume bars */}
-        {data.map((d, i) => {
-          const x = (i / data.length) * chartWidth;
-          const barWidth = chartWidth / data.length;
-          const barHeight = (d.volume / maxVolume) * volumeHeight;
-          return (
-            <rect
-              key={i}
-              x={x}
-              y={chartHeight + (volumeHeight - barHeight)}
-              width={Math.max(barWidth - 1, 1)}
-              height={barHeight}
-              fill={d.close >= d.open ? "#22c55e40" : "#ef444440"}
-            />
-          );
-        })}
-      </svg>
-
-      {/* Price labels */}
-      <div className="flex justify-between text-xs text-gray-500 mt-1">
-        <span>
-          {new Date(data[0].timestamp).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </span>
-        <span>
-          {new Date(data[data.length - 1].timestamp).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </span>
-      </div>
+    <div className="rounded-2xl overflow-hidden bg-[#06061a] border border-white/5 shadow-xl shadow-black/30">
+      <div ref={containerRef} className="w-full" />
     </div>
   );
 }

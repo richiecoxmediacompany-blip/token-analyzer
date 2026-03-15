@@ -100,16 +100,34 @@ async function fetchPriceHistory(
   timeframe: string
 ): Promise<PricePoint[]> {
   try {
-    // Map timeframe to DexScreener-compatible intervals
-    const intervalMap: Record<string, { type: string; count: number }> = {
-      "1h": { type: "m1", count: 60 },
-      "6h": { type: "m5", count: 72 },
-      "24h": { type: "m15", count: 96 },
-      "7d": { type: "h1", count: 168 },
-      "30d": { type: "h4", count: 180 },
+    // First, get pool address from DexScreener
+    const dexData = await cachedFetch<{ pairs?: Array<Record<string, unknown>> }>(
+      `https://api.dexscreener.com/latest/dex/tokens/${address}`,
+      {},
+      60_000
+    );
+
+    if (!dexData.pairs || dexData.pairs.length === 0) return [];
+
+    // Find the best Solana pair (highest liquidity)
+    const solanaPairs = dexData.pairs.filter(
+      (p) => (p.chainId as string) === "solana"
+    );
+    const bestPair = solanaPairs[0] || dexData.pairs[0];
+    const poolAddress = bestPair.pairAddress as string;
+
+    if (!poolAddress) return [];
+
+    // Map timeframe to GeckoTerminal OHLCV params (free, no API key needed)
+    const geckoParams: Record<string, { timeframe: string; aggregate: number; limit: number }> = {
+      "1h":  { timeframe: "minute", aggregate: 1, limit: 60 },
+      "6h":  { timeframe: "minute", aggregate: 5, limit: 72 },
+      "24h": { timeframe: "minute", aggregate: 15, limit: 96 },
+      "7d":  { timeframe: "hour", aggregate: 1, limit: 168 },
+      "30d": { timeframe: "hour", aggregate: 4, limit: 180 },
     };
 
-    const interval = intervalMap[timeframe] || intervalMap["24h"];
+    const params = geckoParams[timeframe] || geckoParams["24h"];
 
     // Use Birdeye OHLCV if API key available
     const birdeyeKey = process.env.BIRDEYE_API_KEY;
@@ -124,11 +142,20 @@ async function fetchPriceHistory(
       };
       const from = now - (timeframeSeconds[timeframe] || 86400);
 
+      const intervalTypeMap: Record<string, string> = {
+        "1h": "1m",
+        "6h": "5m",
+        "24h": "15m",
+        "7d": "1H",
+        "30d": "4H",
+      };
+      const intervalType = intervalTypeMap[timeframe] || "15m";
+
       const data = await cachedFetch<{
         data?: { items?: Array<Record<string, number>> };
         success?: boolean;
       }>(
-        `https://public-api.birdeye.so/defi/ohlcv?address=${address}&type=${interval.type}&time_from=${from}&time_to=${now}`,
+        `https://public-api.birdeye.so/defi/ohlcv?address=${address}&type=${intervalType}&time_from=${from}&time_to=${now}`,
         {
           headers: {
             "Content-Type": "application/json",
@@ -139,7 +166,7 @@ async function fetchPriceHistory(
         60_000
       );
 
-      if (data.success && data.data?.items) {
+      if (data.success && data.data?.items && data.data.items.length > 0) {
         return data.data.items.map((item) => ({
           timestamp: (item.unixTime || 0) * 1000,
           open: item.o || 0,
@@ -151,40 +178,34 @@ async function fetchPriceHistory(
       }
     }
 
-    // Fallback: generate synthetic price history from DexScreener data
-    const dexData = await cachedFetch<{ pairs?: Array<Record<string, unknown>> }>(
-      `https://api.dexscreener.com/latest/dex/tokens/${address}`,
-      {},
-      60_000
+    // Free fallback: GeckoTerminal OHLCV API (no key needed)
+    const geckoUrl = `https://api.geckoterminal.com/api/v2/networks/solana/pools/${poolAddress}/ohlcv/${params.timeframe}?aggregate=${params.aggregate}&limit=${params.limit}&currency=usd`;
+
+    const geckoData = await cachedFetch<{
+      data?: {
+        attributes?: {
+          ohlcv_list?: Array<[number, string, string, string, string, string]>;
+        };
+      };
+    }>(
+      geckoUrl,
+      { headers: { Accept: "application/json" } },
+      30_000
     );
 
-    if (dexData.pairs && dexData.pairs.length > 0) {
-      const pair = dexData.pairs[0];
-      const currentPrice = parseFloat(pair.priceUsd as string) || 0;
-      const priceChanges = pair.priceChange as Record<string, number> | undefined;
-      const change24h = (priceChanges?.h24 ?? 0) / 100;
-
-      // Generate approximate price history
-      const points: PricePoint[] = [];
-      const numPoints = interval.count;
-      const startPrice = currentPrice / (1 + change24h);
-
-      for (let i = 0; i < numPoints; i++) {
-        const progress = i / numPoints;
-        const noise = (Math.random() - 0.5) * currentPrice * 0.02;
-        const price = startPrice + (currentPrice - startPrice) * progress + noise;
-
-        points.push({
-          timestamp: Date.now() - (numPoints - i) * 60000 * (timeframe === "30d" ? 240 : timeframe === "7d" ? 60 : 15),
-          open: price,
-          high: price * (1 + Math.random() * 0.01),
-          low: price * (1 - Math.random() * 0.01),
-          close: price + noise * 0.5,
-          volume: Math.random() * 10000,
-        });
-      }
-
-      return points;
+    const ohlcvList = geckoData?.data?.attributes?.ohlcv_list;
+    if (ohlcvList && ohlcvList.length > 0) {
+      // GeckoTerminal returns [timestamp, open, high, low, close, volume] sorted newest first
+      return ohlcvList
+        .map((candle) => ({
+          timestamp: candle[0] * 1000,
+          open: parseFloat(candle[1]) || 0,
+          high: parseFloat(candle[2]) || 0,
+          low: parseFloat(candle[3]) || 0,
+          close: parseFloat(candle[4]) || 0,
+          volume: parseFloat(candle[5]) || 0,
+        }))
+        .sort((a, b) => a.timestamp - b.timestamp);
     }
 
     return [];

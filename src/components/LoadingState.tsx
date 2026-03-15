@@ -6,7 +6,7 @@ export function SectionSkeleton({ lines = 4 }: { lines?: number }) {
       {Array.from({ length: lines }).map((_, i) => (
         <div
           key={i}
-          className="h-4 bg-gray-800 rounded"
+          className="h-4 bg-white/[0.03] rounded-lg"
           style={{ width: `${85 - i * 10}%` }}
         />
       ))}
@@ -16,12 +16,12 @@ export function SectionSkeleton({ lines = 4 }: { lines?: number }) {
 
 export function CardSkeleton() {
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 animate-pulse">
-      <div className="h-5 bg-gray-800 rounded w-1/3 mb-4" />
+    <div className="card-3d rounded-2xl p-6 animate-pulse">
+      <div className="h-5 bg-white/[0.04] rounded-lg w-1/3 mb-4" />
       <div className="space-y-3">
-        <div className="h-4 bg-gray-800 rounded w-3/4" />
-        <div className="h-4 bg-gray-800 rounded w-1/2" />
-        <div className="h-4 bg-gray-800 rounded w-2/3" />
+        <div className="h-4 bg-white/[0.03] rounded-lg w-3/4" />
+        <div className="h-4 bg-white/[0.03] rounded-lg w-1/2" />
+        <div className="h-4 bg-white/[0.03] rounded-lg w-2/3" />
       </div>
     </div>
   );
@@ -29,9 +29,9 @@ export function CardSkeleton() {
 
 export function MetricSkeleton() {
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 animate-pulse">
-      <div className="h-3 bg-gray-800 rounded w-1/2 mb-2" />
-      <div className="h-6 bg-gray-800 rounded w-3/4" />
+    <div className="card-3d rounded-2xl p-4 animate-pulse">
+      <div className="h-3 bg-white/[0.03] rounded-lg w-1/2 mb-2" />
+      <div className="h-6 bg-white/[0.03] rounded-lg w-3/4" />
     </div>
   );
 }
@@ -46,26 +46,26 @@ export function ProgressBar({ sections }: { sections: Record<string, boolean> })
   return (
     <div className="w-full max-w-2xl mx-auto mb-8">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm text-gray-400">Fetching data...</span>
-        <span className="text-sm text-gray-400">{Math.round(pct)}%</span>
+        <span className="text-sm text-gray-500">Analyzing token...</span>
+        <span className="text-sm text-gray-500 font-mono">{Math.round(pct)}%</span>
       </div>
-      <div className="w-full bg-gray-800 rounded-full h-2">
+      <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
         <div
-          className="bg-blue-500 h-2 rounded-full transition-all duration-500"
+          className="solana-gradient h-1.5 rounded-full transition-all duration-500 shadow-lg shadow-purple-500/20"
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className="flex flex-wrap gap-2 mt-2">
+      <div className="flex flex-wrap gap-2 mt-3">
         {Object.entries(sections).map(([key, isLoading]) => (
           <span
             key={key}
-            className={`text-xs px-2 py-1 rounded ${
+            className={`text-[10px] px-2.5 py-1 rounded-lg font-medium ${
               isLoading
-                ? "bg-blue-900/50 text-blue-400"
-                : "bg-green-900/50 text-green-400"
+                ? "glass-card text-purple-400 border border-purple-500/20"
+                : "glass-card text-emerald-400 border border-emerald-500/20"
             }`}
           >
-            {isLoading ? "Loading" : "Done"}: {key}
+            {key}
           </span>
         ))}
       </div>

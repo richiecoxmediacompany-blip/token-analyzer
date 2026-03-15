@@ -1,34 +1,75 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   ArrowUpDown,
   TrendingUp,
   TrendingDown,
   BarChart3,
   Users,
+  Loader2,
+  Radio,
 } from "lucide-react";
-import type { TransactionMetrics } from "@/types";
+import type { TransactionMetrics, PricePoint } from "@/types";
 import { formatNumber, formatLargeNumber } from "@/lib/utils";
 import PriceChart from "./PriceChart";
+
+const POLL_INTERVAL = 30_000;
 
 interface TradingMetricsProps {
   metrics: TransactionMetrics;
   tokenAddress: string;
-  onTimeframeChange?: (timeframe: string) => void;
 }
 
 export default function TradingMetrics({
   metrics,
   tokenAddress,
-  onTimeframeChange,
 }: TradingMetricsProps) {
   const [timeframe, setTimeframe] = useState("24h");
+  const [chartData, setChartData] = useState<PricePoint[]>(metrics.priceHistory);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [isLive, setIsLive] = useState(true);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeframeRef = useRef(timeframe);
+  timeframeRef.current = timeframe;
 
-  const handleTimeframeChange = (tf: string) => {
+  const fetchChart = useCallback(async (tf: string, silent = false) => {
+    if (!silent) setChartLoading(true);
+    try {
+      const q = `address=${encodeURIComponent(tokenAddress)}&timeframe=${tf}`;
+      const res = await fetch(`/api/transactions?${q}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.priceHistory && data.priceHistory.length > 0) {
+          setChartData(data.priceHistory);
+        }
+      }
+    } catch {
+      // Keep existing data
+    } finally {
+      if (!silent) setChartLoading(false);
+    }
+  }, [tokenAddress]);
+
+  useEffect(() => {
+    if (isLive) {
+      pollRef.current = setInterval(() => {
+        fetchChart(timeframeRef.current, true);
+      }, POLL_INTERVAL);
+    }
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [isLive, fetchChart]);
+
+  useEffect(() => {
+    setChartData(metrics.priceHistory);
+  }, [tokenAddress, metrics.priceHistory]);
+
+  const handleTimeframeChange = useCallback(async (tf: string) => {
     setTimeframe(tf);
-    onTimeframeChange?.(tf);
-  };
+    await fetchChart(tf);
+  }, [fetchChart]);
 
   const buyRatio =
     metrics.buyCount + metrics.sellCount > 0
@@ -36,97 +77,142 @@ export default function TradingMetrics({
       : 50;
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-      <div className="flex items-center gap-2 mb-4">
-        <BarChart3 className="w-5 h-5 text-blue-400" />
-        <h2 className="text-lg font-bold text-white">Trading Activity</h2>
-      </div>
+    <div className="card-3d rounded-2xl overflow-hidden">
+      {/* Header */}
+      <div className="px-6 pt-6 pb-4">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shadow-lg shadow-blue-500/10">
+              <BarChart3 className="w-5 h-5 text-blue-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-white">Trading Activity</h2>
+              <p className="text-[10px] text-gray-500 uppercase tracking-wider">24h Overview</p>
+            </div>
+          </div>
+        </div>
 
-      {/* Metric cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <div className="bg-gray-800/50 rounded-lg p-3">
-          <div className="flex items-center gap-1 text-gray-500 text-xs">
-            <ArrowUpDown className="w-3 h-3" />
-            24h Transactions
-          </div>
-          <p className="text-lg font-semibold text-white mt-1">
-            {formatNumber(metrics.count24h)}
-          </p>
-        </div>
-        <div className="bg-gray-800/50 rounded-lg p-3">
-          <div className="flex items-center gap-1 text-green-500 text-xs">
-            <TrendingUp className="w-3 h-3" />
-            Buys
-          </div>
-          <p className="text-lg font-semibold text-green-400 mt-1">
-            {formatNumber(metrics.buyCount)}
-          </p>
-        </div>
-        <div className="bg-gray-800/50 rounded-lg p-3">
-          <div className="flex items-center gap-1 text-red-500 text-xs">
-            <TrendingDown className="w-3 h-3" />
-            Sells
-          </div>
-          <p className="text-lg font-semibold text-red-400 mt-1">
-            {formatNumber(metrics.sellCount)}
-          </p>
-        </div>
-        <div className="bg-gray-800/50 rounded-lg p-3">
-          <div className="flex items-center gap-1 text-gray-500 text-xs">
-            <Users className="w-3 h-3" />
-            Unique Buyers
-          </div>
-          <p className="text-lg font-semibold text-white mt-1">
-            {formatNumber(metrics.uniqueBuyers)}
-          </p>
-        </div>
-      </div>
-
-      {/* Buy/Sell ratio bar */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between text-sm mb-2">
-          <span className="text-green-400">
-            Buy {buyRatio.toFixed(0)}%
-          </span>
-          <span className="text-red-400">
-            Sell {(100 - buyRatio).toFixed(0)}%
-          </span>
-        </div>
-        <div className="w-full bg-red-500/30 rounded-full h-3 overflow-hidden">
-          <div
-            className="bg-green-500 h-3 rounded-l-full transition-all"
-            style={{ width: `${buyRatio}%` }}
+        {/* Metric cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          <MetricCard
+            icon={<ArrowUpDown className="w-3.5 h-3.5" />}
+            label="Transactions"
+            value={formatNumber(metrics.count24h)}
+            color="text-gray-400"
+          />
+          <MetricCard
+            icon={<TrendingUp className="w-3.5 h-3.5" />}
+            label="Buys"
+            value={formatNumber(metrics.buyCount)}
+            color="text-emerald-400"
+            glow="shadow-emerald-500/5"
+          />
+          <MetricCard
+            icon={<TrendingDown className="w-3.5 h-3.5" />}
+            label="Sells"
+            value={formatNumber(metrics.sellCount)}
+            color="text-red-400"
+            glow="shadow-red-500/5"
+          />
+          <MetricCard
+            icon={<Users className="w-3.5 h-3.5" />}
+            label="Unique Buyers"
+            value={formatNumber(metrics.uniqueBuyers)}
+            color="text-gray-400"
           />
         </div>
+
+        {/* Buy/Sell ratio bar */}
+        <div className="mb-5">
+          <div className="flex items-center justify-between text-xs mb-2">
+            <span className="text-emerald-400 font-medium">Buy {buyRatio.toFixed(0)}%</span>
+            <span className="text-red-400 font-medium">Sell {(100 - buyRatio).toFixed(0)}%</span>
+          </div>
+          <div className="w-full bg-red-500/15 rounded-full h-2.5 overflow-hidden shadow-inner">
+            <div
+              className="bg-gradient-to-r from-emerald-500 to-emerald-400 h-2.5 rounded-l-full transition-all shadow-lg shadow-emerald-500/20"
+              style={{ width: `${buyRatio}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Avg transaction */}
+        <div className="flex items-center justify-between text-sm text-gray-400 glass-card rounded-xl px-4 py-3">
+          <span>Avg Transaction Size</span>
+          <span className="text-white font-semibold">{formatLargeNumber(metrics.avgTransactionSize)}</span>
+        </div>
       </div>
 
-      {/* Average transaction */}
-      <div className="flex items-center justify-between text-sm text-gray-400 mb-6 bg-gray-800/50 rounded-lg p-3">
-        <span>Average Transaction Size</span>
-        <span className="text-white font-semibold">
-          {formatLargeNumber(metrics.avgTransactionSize)}
-        </span>
-      </div>
-
-      {/* Price chart */}
-      <div>
-        <div className="flex items-center gap-2 mb-4">
-          {["1h", "6h", "24h", "7d", "30d"].map((tf) => (
+      {/* Chart section */}
+      <div className="border-t border-white/5">
+        <div className="px-6 pt-4 pb-3 flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-semibold text-gray-400">Price Chart</h3>
             <button
-              key={tf}
-              onClick={() => handleTimeframeChange(tf)}
-              className={`px-3 py-1 text-xs rounded-lg transition-colors ${
-                timeframe === tf
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-800 text-gray-400 hover:text-white"
+              onClick={() => setIsLive(!isLive)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${
+                isLive
+                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-lg shadow-emerald-500/10"
+                  : "glass-card text-gray-500 hover:text-gray-300"
               }`}
             >
-              {tf}
+              <Radio className={`w-3 h-3 ${isLive ? "animate-pulse" : ""}`} />
+              {isLive ? "Live" : "Paused"}
             </button>
-          ))}
+          </div>
+          <div className="flex items-center gap-1 glass-card rounded-xl p-1">
+            {["1h", "6h", "24h", "7d", "30d"].map((tf) => (
+              <button
+                key={tf}
+                onClick={() => handleTimeframeChange(tf)}
+                disabled={chartLoading}
+                className={`px-3 py-1.5 text-xs rounded-lg transition-all font-medium ${
+                  timeframe === tf
+                    ? "bg-purple-500/20 text-purple-300 shadow-sm border border-purple-500/20"
+                    : "text-gray-500 hover:text-gray-300"
+                }`}
+              >
+                {tf}
+              </button>
+            ))}
+          </div>
         </div>
-        <PriceChart data={metrics.priceHistory} />
+        <div className="px-6 pb-6 relative">
+          {chartLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-[#050510]/60 z-10 rounded-2xl backdrop-blur-sm">
+              <div className="flex items-center gap-2 glass-card px-4 py-2 rounded-xl">
+                <Loader2 className="w-4 h-4 text-purple-400 animate-spin" />
+                <span className="text-xs text-gray-400">Loading chart...</span>
+              </div>
+            </div>
+          )}
+          <PriceChart data={chartData} />
+        </div>
       </div>
+    </div>
+  );
+}
+
+function MetricCard({
+  icon,
+  label,
+  value,
+  color,
+  glow = "",
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  color: string;
+  glow?: string;
+}) {
+  return (
+    <div className={`glass-card rounded-xl p-3 ${glow}`}>
+      <div className={`flex items-center gap-1.5 text-xs ${color} mb-1`}>
+        {icon}
+        {label}
+      </div>
+      <p className="text-lg font-bold text-white">{value}</p>
     </div>
   );
 }
