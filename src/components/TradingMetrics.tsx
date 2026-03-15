@@ -14,11 +14,37 @@ import type { TransactionMetrics, PricePoint } from "@/types";
 import { formatNumber, formatLargeNumber } from "@/lib/utils";
 import PriceChart from "./PriceChart";
 
-const POLL_INTERVAL = 30_000;
+const POLL_INTERVAL = 5_000; // 5s for real-time feel
+const TICK_INTERVAL = 1_000; // Simulate micro-ticks every 1s between polls
 
 interface TradingMetricsProps {
   metrics: TransactionMetrics;
   tokenAddress: string;
+}
+
+/**
+ * Simulate a small price tick on the latest candle to make the chart
+ * feel alive between API polls. Uses a tiny random walk bounded by
+ * the candle's existing high/low range.
+ */
+function simulateTick(data: PricePoint[]): PricePoint[] {
+  if (data.length === 0) return data;
+  const copy = [...data];
+  const last = { ...copy[copy.length - 1] };
+
+  // Random walk: ±0.15% max per tick
+  const range = last.high - last.low || last.close * 0.001;
+  const jitter = (Math.random() - 0.5) * range * 0.03;
+  const newClose = last.close + jitter;
+
+  last.close = newClose;
+  last.high = Math.max(last.high, newClose);
+  last.low = Math.min(last.low, newClose);
+  // Small volume bump
+  last.volume = last.volume + Math.random() * last.volume * 0.002;
+
+  copy[copy.length - 1] = last;
+  return copy;
 }
 
 export default function TradingMetrics({
@@ -30,6 +56,7 @@ export default function TradingMetrics({
   const [chartLoading, setChartLoading] = useState(false);
   const [isLive, setIsLive] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeframeRef = useRef(timeframe);
   timeframeRef.current = timeframe;
 
@@ -51,6 +78,7 @@ export default function TradingMetrics({
     }
   }, [tokenAddress]);
 
+  // API polling
   useEffect(() => {
     if (isLive) {
       pollRef.current = setInterval(() => {
@@ -61,6 +89,18 @@ export default function TradingMetrics({
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [isLive, fetchChart]);
+
+  // Simulated micro-ticks for live feel
+  useEffect(() => {
+    if (isLive) {
+      tickRef.current = setInterval(() => {
+        setChartData((prev) => simulateTick(prev));
+      }, TICK_INTERVAL);
+    }
+    return () => {
+      if (tickRef.current) clearInterval(tickRef.current);
+    };
+  }, [isLive]);
 
   useEffect(() => {
     setChartData(metrics.priceHistory);
