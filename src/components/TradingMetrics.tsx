@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   ArrowUpDown,
   TrendingUp,
@@ -8,10 +8,13 @@ import {
   BarChart3,
   Users,
   Loader2,
+  Radio,
 } from "lucide-react";
 import type { TransactionMetrics, PricePoint } from "@/types";
 import { formatNumber, formatLargeNumber } from "@/lib/utils";
 import PriceChart from "./PriceChart";
+
+const POLL_INTERVAL = 30_000; // 30 seconds
 
 interface TradingMetricsProps {
   metrics: TransactionMetrics;
@@ -25,28 +28,62 @@ export default function TradingMetrics({
   const [timeframe, setTimeframe] = useState("24h");
   const [chartData, setChartData] = useState<PricePoint[]>(metrics.priceHistory);
   const [chartLoading, setChartLoading] = useState(false);
+  const [isLive, setIsLive] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeframeRef = useRef(timeframe);
 
-  const handleTimeframeChange = useCallback(async (tf: string) => {
-    setTimeframe(tf);
-    setChartLoading(true);
+  // Keep ref in sync
+  timeframeRef.current = timeframe;
+
+  const fetchChart = useCallback(async (tf: string, silent = false) => {
+    if (!silent) setChartLoading(true);
     try {
       const q = `address=${encodeURIComponent(tokenAddress)}&timeframe=${tf}`;
       const res = await fetch(`/api/transactions?${q}`);
       if (res.ok) {
         const data = await res.json();
-        setChartData(data.priceHistory || []);
+        if (data.priceHistory && data.priceHistory.length > 0) {
+          setChartData(data.priceHistory);
+          setLastUpdate(new Date());
+        }
       }
     } catch {
-      // Keep existing chart data on error
+      // Keep existing data on error
     } finally {
-      setChartLoading(false);
+      if (!silent) setChartLoading(false);
     }
   }, [tokenAddress]);
+
+  // Start/stop live polling
+  useEffect(() => {
+    if (isLive) {
+      pollRef.current = setInterval(() => {
+        fetchChart(timeframeRef.current, true);
+      }, POLL_INTERVAL);
+    }
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [isLive, fetchChart]);
+
+  // Reset when token changes
+  useEffect(() => {
+    setChartData(metrics.priceHistory);
+    setLastUpdate(new Date());
+  }, [tokenAddress, metrics.priceHistory]);
+
+  const handleTimeframeChange = useCallback(async (tf: string) => {
+    setTimeframe(tf);
+    await fetchChart(tf);
+  }, [fetchChart]);
 
   const buyRatio =
     metrics.buyCount + metrics.sellCount > 0
       ? (metrics.buyCount / (metrics.buyCount + metrics.sellCount)) * 100
       : 50;
+
+  const timeSinceUpdate = Math.round((Date.now() - lastUpdate.getTime()) / 1000);
 
   return (
     <div className="bg-[#0d0d20] border border-white/5 rounded-2xl overflow-hidden">
@@ -121,8 +158,22 @@ export default function TradingMetrics({
 
       {/* Chart section */}
       <div className="border-t border-white/5">
-        <div className="px-6 pt-4 pb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-400">Price Chart</h3>
+        <div className="px-6 pt-4 pb-2 flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-semibold text-gray-400">Price Chart</h3>
+            {/* Live toggle */}
+            <button
+              onClick={() => setIsLive(!isLive)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-wider transition-all ${
+                isLive
+                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                  : "bg-white/[0.03] text-gray-500 border border-white/5 hover:text-gray-300"
+              }`}
+            >
+              <Radio className={`w-3 h-3 ${isLive ? "animate-pulse" : ""}`} />
+              {isLive ? "Live" : "Paused"}
+            </button>
+          </div>
           <div className="flex items-center gap-1 bg-white/[0.03] rounded-lg p-1">
             {["1h", "6h", "24h", "7d", "30d"].map((tf) => (
               <button
