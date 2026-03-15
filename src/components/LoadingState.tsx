@@ -6,7 +6,7 @@ export function SectionSkeleton({ lines = 4 }: { lines?: number }) {
       {Array.from({ length: lines }).map((_, i) => (
         <div
           key={i}
-          className="h-4 bg-white/5 rounded-lg"
+          className="h-4 bg-white/[0.03] rounded-lg"
           style={{ width: `${85 - i * 10}%` }}
         />
       ))}
@@ -16,12 +16,12 @@ export function SectionSkeleton({ lines = 4 }: { lines?: number }) {
 
 export function CardSkeleton() {
   return (
-    <div className="bg-[#0d0d20] border border-white/5 rounded-2xl p-6 animate-pulse">
-      <div className="h-5 bg-white/5 rounded-lg w-1/3 mb-4" />
+    <div className="card-3d rounded-2xl p-6 animate-pulse">
+      <div className="h-5 bg-white/[0.04] rounded-lg w-1/3 mb-4" />
       <div className="space-y-3">
-        <div className="h-4 bg-white/5 rounded-lg w-3/4" />
-        <div className="h-4 bg-white/5 rounded-lg w-1/2" />
-        <div className="h-4 bg-white/5 rounded-lg w-2/3" />
+        <div className="h-4 bg-white/[0.03] rounded-lg w-3/4" />
+        <div className="h-4 bg-white/[0.03] rounded-lg w-1/2" />
+        <div className="h-4 bg-white/[0.03] rounded-lg w-2/3" />
       </div>
     </div>
   );
@@ -29,9 +29,9 @@ export function CardSkeleton() {
 
 export function MetricSkeleton() {
   return (
-    <div className="bg-[#0d0d20] border border-white/5 rounded-2xl p-4 animate-pulse">
-      <div className="h-3 bg-white/5 rounded-lg w-1/2 mb-2" />
-      <div className="h-6 bg-white/5 rounded-lg w-3/4" />
+    <div className="card-3d rounded-2xl p-4 animate-pulse">
+      <div className="h-3 bg-white/[0.03] rounded-lg w-1/2 mb-2" />
+      <div className="h-6 bg-white/[0.03] rounded-lg w-3/4" />
     </div>
   );
 }
@@ -51,7 +51,7 @@ export function ProgressBar({ sections }: { sections: Record<string, boolean> })
       </div>
       <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
         <div
-          className="bg-gradient-to-r from-cyan-500 to-blue-500 h-1.5 rounded-full transition-all duration-500"
+          className="solana-gradient h-1.5 rounded-full transition-all duration-500 shadow-lg shadow-purple-500/20"
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -61,8 +61,8 @@ export function ProgressBar({ sections }: { sections: Record<string, boolean> })
             key={key}
             className={`text-[10px] px-2.5 py-1 rounded-lg font-medium ${
               isLoading
-                ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                ? "glass-card text-purple-400 border border-purple-500/20"
+                : "glass-card text-emerald-400 border border-emerald-500/20"
             }`}
           >
             {key}

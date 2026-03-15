@@ -58,14 +58,11 @@ export default function AnalysisDashboard({
         {tokenInfo && <TokenOverview token={tokenInfo} />}
       </Section>
 
-      {/* Two column layout for desktop */}
+      {/* Two column layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Security */}
         <Section loading={loading.security} error={errors.security}>
           {security && <SecurityChecklist security={security} />}
         </Section>
-
-        {/* Liquidity */}
         <Section loading={loading.liquidity} error={errors.liquidity}>
           {liquidity && <LiquidityCard liquidity={liquidity} />}
         </Section>
@@ -74,26 +71,15 @@ export default function AnalysisDashboard({
       {/* Trading Metrics - Full width */}
       <Section loading={loading.transactions} error={errors.transactions}>
         {transactions && tokenAddress && (
-          <TradingMetrics
-            metrics={transactions}
-            tokenAddress={tokenAddress}
-          />
+          <TradingMetrics metrics={transactions} tokenAddress={tokenAddress} />
         )}
       </Section>
 
       {/* Two column layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Holders */}
         <Section loading={loading.holders} error={errors.holders}>
-          {holders && (
-            <HolderTable
-              holders={holders}
-              tokenPrice={tokenInfo?.price ?? 0}
-            />
-          )}
+          {holders && <HolderTable holders={holders} tokenPrice={tokenInfo?.price ?? 0} />}
         </Section>
-
-        {/* Social */}
         <Section loading={loading.social} error={errors.social}>
           {social && <SocialSignals social={social} />}
         </Section>
@@ -115,7 +101,7 @@ function Section({
 
   if (error) {
     return (
-      <div className="bg-[#0d0d20] border border-red-900/30 rounded-2xl p-6">
+      <div className="card-3d rounded-2xl p-6 border-red-500/20">
         <p className="text-red-400 text-sm">Error: {error}</p>
       </div>
     );

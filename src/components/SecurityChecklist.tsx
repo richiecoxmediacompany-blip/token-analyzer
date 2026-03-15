@@ -10,21 +10,21 @@ interface SecurityChecklistProps {
 
 export default function SecurityChecklist({ security }: SecurityChecklistProps) {
   return (
-    <div className="bg-[#0d0d20] border border-white/5 rounded-2xl p-6">
+    <div className="card-3d rounded-2xl p-6">
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shadow-lg shadow-emerald-500/10">
             <Shield className="w-5 h-5 text-emerald-400" />
           </div>
           <h2 className="text-lg font-bold text-white">Security</h2>
         </div>
         <div
-          className={`text-sm font-bold px-3 py-1.5 rounded-xl ${
+          className={`text-sm font-bold px-3 py-1.5 rounded-xl border shadow-lg ${
             security.overallScore >= 7
-              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-emerald-500/10"
               : security.overallScore >= 4
-              ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-              : "bg-red-500/10 text-red-400 border border-red-500/20"
+              ? "bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-amber-500/10"
+              : "bg-red-500/10 text-red-400 border-red-500/20 shadow-red-500/10"
           }`}
         >
           {security.overallScore.toFixed(1)}/10
@@ -35,12 +35,12 @@ export default function SecurityChecklist({ security }: SecurityChecklistProps) 
         {security.checks.map((check, i) => (
           <div
             key={i}
-            className={`flex items-start gap-3 p-3 rounded-xl border ${
+            className={`flex items-start gap-3 p-3 rounded-xl border transition-all ${
               check.passed
-                ? "bg-emerald-500/[0.03] border-emerald-500/10"
+                ? "glass-card border-emerald-500/10"
                 : check.severity === "critical"
-                ? "bg-red-500/[0.05] border-red-500/15"
-                : "bg-amber-500/[0.03] border-amber-500/10"
+                ? "glass-card border-red-500/15"
+                : "glass-card border-amber-500/10"
             }`}
           >
             {check.passed ? (
@@ -69,35 +69,36 @@ export default function SecurityChecklist({ security }: SecurityChecklistProps) 
         ))}
       </div>
 
-      {/* Authority addresses */}
-      <div className="mt-4 space-y-2 text-sm">
-        {security.mintAuthority && (
-          <div className="flex items-center gap-2 text-gray-500">
-            <span>Mint Authority:</span>
-            <a
-              href={`https://solscan.io/account/${security.mintAuthority}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-mono text-blue-400 hover:text-blue-300 text-xs"
-            >
-              {shortenAddress(security.mintAuthority, 6)}
-            </a>
-          </div>
-        )}
-        {security.freezeAuthority && (
-          <div className="flex items-center gap-2 text-gray-500">
-            <span>Freeze Authority:</span>
-            <a
-              href={`https://solscan.io/account/${security.freezeAuthority}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-mono text-blue-400 hover:text-blue-300 text-xs"
-            >
-              {shortenAddress(security.freezeAuthority, 6)}
-            </a>
-          </div>
-        )}
-      </div>
+      {(security.mintAuthority || security.freezeAuthority) && (
+        <div className="mt-4 space-y-2 text-sm">
+          {security.mintAuthority && (
+            <div className="flex items-center gap-2 text-gray-500">
+              <span>Mint Authority:</span>
+              <a
+                href={`https://solscan.io/account/${security.mintAuthority}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-purple-400 hover:text-purple-300 text-xs"
+              >
+                {shortenAddress(security.mintAuthority, 6)}
+              </a>
+            </div>
+          )}
+          {security.freezeAuthority && (
+            <div className="flex items-center gap-2 text-gray-500">
+              <span>Freeze Authority:</span>
+              <a
+                href={`https://solscan.io/account/${security.freezeAuthority}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-purple-400 hover:text-purple-300 text-xs"
+              >
+                {shortenAddress(security.freezeAuthority, 6)}
+              </a>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
