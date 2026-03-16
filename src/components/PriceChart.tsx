@@ -24,6 +24,26 @@ function toTime(ts: number): Time {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySeries = any;
 
+/** Returns the number of decimal places needed to show meaningful digits for a price */
+function getPrecision(price: number): number {
+  if (price <= 0) return 2;
+  if (price >= 1) return 2;
+  if (price >= 0.01) return 4;
+  // For very small prices, count leading zeros after decimal then add 4 significant digits
+  const str = price.toFixed(20);
+  const match = str.match(/^0\.0*/);
+  if (!match) return 4;
+  const leadingZeros = match[0].length - 2; // subtract "0."
+  return leadingZeros + 4;
+}
+
+/** Format a price with appropriate precision for display */
+function formatPrice(price: number): string {
+  if (price <= 0) return "0";
+  const precision = getPrecision(price);
+  return price.toFixed(precision);
+}
+
 export default function PriceChart({ data, livePrice, liveTick }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -76,6 +96,9 @@ export default function PriceChart({ data, livePrice, liveTick }: PriceChartProp
         barSpacing: 8,
       },
       handleScroll: { vertTouchDrag: false },
+      localization: {
+        priceFormatter: formatPrice,
+      },
     });
 
     const candleSeries = chart.addSeries(CandlestickSeries, {
@@ -85,6 +108,10 @@ export default function PriceChart({ data, livePrice, liveTick }: PriceChartProp
       borderDownColor: "#ef4444",
       wickUpColor: "#22c55e",
       wickDownColor: "#ef4444",
+      priceFormat: {
+        type: "custom",
+        formatter: formatPrice,
+      },
     });
 
     const volumeSeries = chart.addSeries(HistogramSeries, {
