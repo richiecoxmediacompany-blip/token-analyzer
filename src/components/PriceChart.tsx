@@ -14,6 +14,7 @@ import type { PricePoint } from "@/types";
 interface PriceChartProps {
   data: PricePoint[];
   livePrice?: number | null;
+  liveTick?: number; // Incrementing counter to force updates
 }
 
 function toTime(ts: number): Time {
@@ -23,7 +24,7 @@ function toTime(ts: number): Time {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySeries = any;
 
-export default function PriceChart({ data, livePrice }: PriceChartProps) {
+export default function PriceChart({ data, livePrice, liveTick }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<AnySeries>(null);
@@ -70,7 +71,7 @@ export default function PriceChart({ data, livePrice }: PriceChartProps) {
       timeScale: {
         borderColor: "rgba(255,255,255,0.05)",
         timeVisible: true,
-        secondsVisible: false,
+        secondsVisible: true,
         rightOffset: 5,
         barSpacing: 8,
       },
@@ -116,7 +117,7 @@ export default function PriceChart({ data, livePrice }: PriceChartProps) {
     };
   }, []);
 
-  // Update candle + volume data whenever data changes
+  // Set full candle data when dataset changes
   useEffect(() => {
     const candleSeries = candleSeriesRef.current;
     const volumeSeries = volumeSeriesRef.current;
@@ -124,7 +125,6 @@ export default function PriceChart({ data, livePrice }: PriceChartProps) {
     if (!candleSeries || !volumeSeries || !chart || !data || data.length === 0)
       return;
 
-    // Build a simple id to detect if the base dataset changed (timeframe switch)
     const dataId = `${data.length}:${data[0]?.timestamp}:${data[data.length - 1]?.timestamp}`;
     const isNewDataset = dataId !== lastDataIdRef.current;
     lastDataIdRef.current = dataId;
@@ -149,27 +149,47 @@ export default function PriceChart({ data, livePrice }: PriceChartProps) {
     candleSeries.setData(candleData);
     volumeSeries.setData(volumeData);
 
-    // Only fitContent on first load or timeframe switch
     if (!fittedRef.current || isNewDataset) {
       chart.timeScale().fitContent();
       fittedRef.current = true;
     }
   }, [data]);
 
-  // Update just the last candle with live price (fast, no full setData)
+  // Live price tick - update the current candle in real-time
   useEffect(() => {
     const candleSeries = candleSeriesRef.current;
-    if (!candleSeries || !livePrice || livePrice <= 0 || !data || data.length === 0) return;
+    if (!candleSeries || !livePrice || livePrice <= 0 || !data || data.length === 0)
+      return;
 
     const last = data[data.length - 1];
-    candleSeries.update({
-      time: toTime(last.timestamp),
-      open: last.open,
-      high: Math.max(last.high, livePrice),
-      low: Math.min(last.low, livePrice),
-      close: livePrice,
-    });
-  }, [livePrice, data]);
+    const now = Math.floor(Date.now() / 1000);
+    const lastCandleTime = Math.floor(last.timestamp / 1000);
+
+    // If the last candle is more than 2 minutes old, create a new candle at current time
+    // rounded down to the nearest minute
+    const currentMinute = Math.floor(now / 60) * 60;
+    const candleAge = now - lastCandleTime;
+
+    if (candleAge > 120) {
+      // Create a new candle at the current minute
+      candleSeries.update({
+        time: currentMinute as Time,
+        open: livePrice,
+        high: livePrice,
+        low: livePrice,
+        close: livePrice,
+      });
+    } else {
+      // Update the existing last candle
+      candleSeries.update({
+        time: toTime(last.timestamp),
+        open: last.open,
+        high: Math.max(last.high, livePrice),
+        low: Math.min(last.low, livePrice),
+        close: livePrice,
+      });
+    }
+  }, [livePrice, liveTick]); // liveTick forces re-run even if price is same
 
   if (!data || data.length === 0) {
     return (

@@ -15,7 +15,7 @@ import { formatNumber, formatLargeNumber } from "@/lib/utils";
 import PriceChart from "./PriceChart";
 
 const OHLCV_POLL_INTERVAL = 30_000; // Full candle refresh every 30s
-const TICK_INTERVAL = 3_000; // Fetch live price every 3s
+const TICK_INTERVAL = 2_000; // Fetch live price every 2s
 
 interface TradingMetricsProps {
   metrics: TransactionMetrics;
@@ -29,6 +29,7 @@ export default function TradingMetrics({
   const [timeframe, setTimeframe] = useState("5m");
   const [chartData, setChartData] = useState<PricePoint[]>(metrics.priceHistory);
   const [livePrice, setLivePrice] = useState<number | null>(null);
+  const [liveTick, setLiveTick] = useState(0);
   const [priceChange, setPriceChange] = useState<number | null>(null);
   const [chartLoading, setChartLoading] = useState(false);
   const [isLive, setIsLive] = useState(true);
@@ -80,6 +81,7 @@ export default function TradingMetrics({
           const tick = await res.json();
           if (tick.price && tick.price > 0) {
             setLivePrice(tick.price);
+            setLiveTick((t) => t + 1);
             setPriceChange(tick.change5m ?? tick.change1h ?? null);
           }
         }
@@ -246,7 +248,7 @@ export default function TradingMetrics({
               </div>
             </div>
           )}
-          <PriceChart data={chartData} livePrice={livePrice} />
+          <PriceChart data={chartData} livePrice={livePrice} liveTick={liveTick} />
         </div>
       </div>
     </div>
