@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cachedFetch } from "@/lib/api-client";
 import { isValidSolanaAddress } from "@/lib/utils";
 
 /**

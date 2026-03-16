@@ -120,6 +120,9 @@ async function fetchPriceHistory(
 
     // Map timeframe to GeckoTerminal OHLCV params (free, no API key needed)
     const geckoParams: Record<string, { timeframe: string; aggregate: number; limit: number }> = {
+      "1m":  { timeframe: "minute", aggregate: 1, limit: 60 },
+      "5m":  { timeframe: "minute", aggregate: 1, limit: 60 },
+      "15m": { timeframe: "minute", aggregate: 1, limit: 60 },
       "1h":  { timeframe: "minute", aggregate: 1, limit: 60 },
       "6h":  { timeframe: "minute", aggregate: 5, limit: 72 },
       "24h": { timeframe: "minute", aggregate: 15, limit: 96 },
@@ -134,6 +137,9 @@ async function fetchPriceHistory(
     if (birdeyeKey) {
       const now = Math.floor(Date.now() / 1000);
       const timeframeSeconds: Record<string, number> = {
+        "1m": 60,
+        "5m": 300,
+        "15m": 900,
         "1h": 3600,
         "6h": 21600,
         "24h": 86400,
@@ -143,6 +149,9 @@ async function fetchPriceHistory(
       const from = now - (timeframeSeconds[timeframe] || 86400);
 
       const intervalTypeMap: Record<string, string> = {
+        "1m": "1m",
+        "5m": "1m",
+        "15m": "1m",
         "1h": "1m",
         "6h": "5m",
         "24h": "15m",

@@ -61,99 +61,117 @@ export async function GET(request: NextRequest) {
   }
 }
 
+const RPC_ENDPOINTS = [
+  "https://api.mainnet-beta.solana.com",
+  "https://solana-mainnet.g.alchemy.com/v2/demo",
+  "https://rpc.ankr.com/solana",
+];
+
+function getEndpoints(): string[] {
+  const key = process.env.HELIUS_API_KEY;
+  if (key) {
+    return [`https://mainnet.helius-rpc.com/?api-key=${key}`, ...RPC_ENDPOINTS];
+  }
+  return RPC_ENDPOINTS;
+}
+
+async function rpcFetch<T>(body: object, cacheDuration = 120_000): Promise<T> {
+  const endpoints = getEndpoints();
+  let lastError: Error | null = null;
+
+  for (const rpcUrl of endpoints) {
+    try {
+      const result = await cachedFetch<T>(
+        rpcUrl,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+        cacheDuration
+      );
+      return result;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      // Try next endpoint
+    }
+  }
+
+  throw lastError || new Error("All RPC endpoints failed");
+}
+
 async function fetchTopHolders(
   mintAddress: string
 ): Promise<{ totalHolders: number; holders: Holder[] }> {
-  const rpcUrl = heliusRpcUrl();
-
   try {
     // Use getTokenLargestAccounts for top holders
-    const response = await cachedFetch<{
+    const response = await rpcFetch<{
       result?: { value?: Array<{ address: string; amount: string; decimals: number; uiAmount: number }> };
-    }>(
-      rpcUrl,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: "largest-accounts",
-          method: "getTokenLargestAccounts",
-          params: [mintAddress],
-        }),
-      },
-      120_000
-    );
+    }>({
+      jsonrpc: "2.0",
+      id: "largest-accounts",
+      method: "getTokenLargestAccounts",
+      params: [mintAddress],
+    });
 
     const accounts = response.result?.value || [];
+    if (accounts.length === 0) {
+      return { totalHolders: 0, holders: [] };
+    }
 
     // Get token supply for percentage calculation
-    const supplyResponse = await cachedFetch<{
+    const supplyResponse = await rpcFetch<{
       result?: { value?: { uiAmount: number } };
-    }>(
-      rpcUrl,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: "token-supply",
-          method: "getTokenSupply",
-          params: [mintAddress],
-        }),
-      },
-      120_000
-    );
+    }>({
+      jsonrpc: "2.0",
+      id: "token-supply",
+      method: "getTokenSupply",
+      params: [mintAddress],
+    });
 
     const totalSupply = supplyResponse.result?.value?.uiAmount || 1;
 
-    // Get owner addresses for token accounts
+    // Get owner addresses for token accounts (batch with concurrency limit)
     const holdersWithOwners = await Promise.all(
-      accounts.map(async (account) => {
-        const ownerAddress = await getTokenAccountOwner(
-          rpcUrl,
-          account.address
-        );
+      accounts.slice(0, 20).map(async (account) => {
+        const ownerAddress = await getTokenAccountOwner(account.address);
         const amount = account.uiAmount || 0;
         const percentage = (amount / totalSupply) * 100;
 
         return {
           address: ownerAddress || account.address,
           amount,
-          usdValue: 0, // Will be enriched client-side with price data
+          usdValue: 0,
           percentage: Math.round(percentage * 100) / 100,
           label: KNOWN_LABELS[ownerAddress || ""] || null,
         };
       })
     );
 
-    // Estimate total holders (RPC doesn't give exact count cheaply)
+    // Estimate total holders
     const estimatedHolders = accounts.length >= 20 ? 1000 : accounts.length * 50;
 
     return {
       totalHolders: estimatedHolders,
-      holders: holdersWithOwners,
+      holders: holdersWithOwners.filter((h) => h.percentage > 0),
     };
-  } catch {
+  } catch (err) {
+    console.error("fetchTopHolders failed:", err);
     return { totalHolders: 0, holders: [] };
   }
 }
 
 async function getTokenAccountOwner(
-  rpcUrl: string,
   tokenAccountAddress: string
 ): Promise<string | null> {
   try {
-    const response = await cachedFetch<{
+    const response = await rpcFetch<{
       result?: { value?: { data?: { parsed?: { info?: { owner?: string } } } } };
     }>(
-      rpcUrl,
       {
-        method: "POST",
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: "account-info",
-          method: "getAccountInfo",
-          params: [tokenAccountAddress, { encoding: "jsonParsed" }],
-        }),
+        jsonrpc: "2.0",
+        id: "account-info",
+        method: "getAccountInfo",
+        params: [tokenAccountAddress, { encoding: "jsonParsed" }],
       },
       300_000
     );

@@ -26,7 +26,7 @@ export default function TradingMetrics({
   metrics,
   tokenAddress,
 }: TradingMetricsProps) {
-  const [timeframe, setTimeframe] = useState("24h");
+  const [timeframe, setTimeframe] = useState("5m");
   const [chartData, setChartData] = useState<PricePoint[]>(metrics.priceHistory);
   const [livePrice, setLivePrice] = useState<number | null>(null);
   const [priceChange, setPriceChange] = useState<number | null>(null);
@@ -96,10 +96,13 @@ export default function TradingMetrics({
     };
   }, [isLive, tokenAddress]);
 
+  // On mount or token change, fetch the default 5m timeframe chart data
   useEffect(() => {
     setChartData(metrics.priceHistory);
     setLivePrice(null);
-  }, [tokenAddress, metrics.priceHistory]);
+    // The initial data comes as 24h - immediately fetch at default timeframe
+    fetchChart("5m");
+  }, [tokenAddress]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleTimeframeChange = useCallback(async (tf: string) => {
     setTimeframe(tf);
@@ -218,7 +221,7 @@ export default function TradingMetrics({
             </button>
           </div>
           <div className="flex items-center gap-1 glass-card rounded-xl p-1">
-            {["1h", "6h", "24h", "7d", "30d"].map((tf) => (
+            {["1m", "5m", "15m", "1h", "6h", "24h", "7d"].map((tf) => (
               <button
                 key={tf}
                 onClick={() => handleTimeframeChange(tf)}
