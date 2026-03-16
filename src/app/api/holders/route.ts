@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { heliusRpcUrl, cachedFetch } from "@/lib/api-client";
 import { isValidSolanaAddress } from "@/lib/utils";
 import type { HolderAnalysis, Holder } from "@/types";
 
@@ -7,7 +6,13 @@ const KNOWN_LABELS: Record<string, string> = {
   "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1": "Raydium Authority",
   "1111111111111111111111111111111111": "Burn Address",
   "11111111111111111111111111111111": "System Program",
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA": "Token Program",
 };
+
+const RPC_ENDPOINTS = [
+  "https://api.mainnet-beta.solana.com",
+  "https://rpc.ankr.com/solana",
+];
 
 export async function GET(request: NextRequest) {
   const address = request.nextUrl.searchParams.get("address");
@@ -29,7 +34,6 @@ export async function GET(request: NextRequest) {
     const top10Percentage = top10.reduce((sum, h) => sum + h.percentage, 0);
     const top100Percentage = top100.reduce((sum, h) => sum + h.percentage, 0);
 
-    // Distribution score: 10 = well distributed, 1 = highly concentrated
     let distributionScore: number;
     if (top10Percentage > 80) distributionScore = 1;
     else if (top10Percentage > 60) distributionScore = 3;
@@ -61,38 +65,44 @@ export async function GET(request: NextRequest) {
   }
 }
 
-const RPC_ENDPOINTS = [
-  "https://api.mainnet-beta.solana.com",
-  "https://solana-mainnet.g.alchemy.com/v2/demo",
-  "https://rpc.ankr.com/solana",
-];
+/** Direct RPC call with fallback endpoints - no caching layer */
+async function rpcCall<T>(body: object): Promise<T> {
+  const heliusKey = process.env.HELIUS_API_KEY;
+  const endpoints = heliusKey
+    ? [`https://mainnet.helius-rpc.com/?api-key=${heliusKey}`, ...RPC_ENDPOINTS]
+    : RPC_ENDPOINTS;
 
-function getEndpoints(): string[] {
-  const key = process.env.HELIUS_API_KEY;
-  if (key) {
-    return [`https://mainnet.helius-rpc.com/?api-key=${key}`, ...RPC_ENDPOINTS];
-  }
-  return RPC_ENDPOINTS;
-}
-
-async function rpcFetch<T>(body: object, cacheDuration = 120_000): Promise<T> {
-  const endpoints = getEndpoints();
   let lastError: Error | null = null;
 
-  for (const rpcUrl of endpoints) {
+  for (const url of endpoints) {
     try {
-      const result = await cachedFetch<T>(
-        rpcUrl,
-        {
-          method: "POST",
-          body: JSON.stringify(body),
-        },
-        cacheDuration
-      );
-      return result;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+        cache: "no-store",
+      });
+
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        throw new Error(`RPC ${res.status}: ${await res.text().catch(() => "")}`);
+      }
+
+      const json = await res.json();
+
+      if (json.error) {
+        throw new Error(`RPC error: ${JSON.stringify(json.error)}`);
+      }
+
+      return json as T;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      // Try next endpoint
+      console.error(`RPC endpoint ${url} failed:`, lastError.message);
     }
   }
 
@@ -103,81 +113,102 @@ async function fetchTopHolders(
   mintAddress: string
 ): Promise<{ totalHolders: number; holders: Holder[] }> {
   try {
-    // Use getTokenLargestAccounts for top holders
-    const response = await rpcFetch<{
-      result?: { value?: Array<{ address: string; amount: string; decimals: number; uiAmount: number }> };
+    // Step 1: Get largest token accounts
+    const largestResponse = await rpcCall<{
+      result?: {
+        value?: Array<{
+          address: string;
+          amount: string;
+          decimals: number;
+          uiAmount: number;
+          uiAmountString: string;
+        }>;
+      };
     }>({
       jsonrpc: "2.0",
-      id: "largest-accounts",
+      id: 1,
       method: "getTokenLargestAccounts",
       params: [mintAddress],
     });
 
-    const accounts = response.result?.value || [];
+    const accounts = largestResponse.result?.value || [];
     if (accounts.length === 0) {
+      console.error("No token accounts found for", mintAddress);
       return { totalHolders: 0, holders: [] };
     }
 
-    // Get token supply for percentage calculation
-    const supplyResponse = await rpcFetch<{
-      result?: { value?: { uiAmount: number } };
+    // Step 2: Get token supply
+    const supplyResponse = await rpcCall<{
+      result?: {
+        value?: {
+          amount: string;
+          decimals: number;
+          uiAmount: number;
+          uiAmountString: string;
+        };
+      };
     }>({
       jsonrpc: "2.0",
-      id: "token-supply",
+      id: 2,
       method: "getTokenSupply",
       params: [mintAddress],
     });
 
     const totalSupply = supplyResponse.result?.value?.uiAmount || 1;
 
-    // Get owner addresses for token accounts (batch with concurrency limit)
-    const holdersWithOwners = await Promise.all(
-      accounts.slice(0, 20).map(async (account) => {
-        const ownerAddress = await getTokenAccountOwner(account.address);
-        const amount = account.uiAmount || 0;
-        const percentage = (amount / totalSupply) * 100;
+    // Step 3: Resolve owner addresses (batch - max 10 to avoid rate limits)
+    const topAccounts = accounts.slice(0, 10);
+    const holders: Holder[] = [];
 
-        return {
-          address: ownerAddress || account.address,
-          amount,
-          usdValue: 0,
-          percentage: Math.round(percentage * 100) / 100,
-          label: KNOWN_LABELS[ownerAddress || ""] || null,
-        };
-      })
-    );
+    // Resolve owners sequentially to avoid rate limiting
+    for (const account of topAccounts) {
+      const amount = account.uiAmount || parseFloat(account.uiAmountString || "0") || 0;
+      if (amount <= 0) continue;
 
-    // Estimate total holders
+      const percentage = (amount / totalSupply) * 100;
+      let ownerAddress = account.address;
+
+      try {
+        const infoResponse = await rpcCall<{
+          result?: {
+            value?: {
+              data?: {
+                parsed?: {
+                  info?: { owner?: string };
+                };
+              };
+            };
+          };
+        }>({
+          jsonrpc: "2.0",
+          id: 3,
+          method: "getAccountInfo",
+          params: [account.address, { encoding: "jsonParsed" }],
+        });
+
+        ownerAddress =
+          infoResponse.result?.value?.data?.parsed?.info?.owner || account.address;
+      } catch {
+        // Keep token account address if owner lookup fails
+      }
+
+      holders.push({
+        address: ownerAddress,
+        amount,
+        usdValue: 0,
+        percentage: Math.round(percentage * 100) / 100,
+        label: KNOWN_LABELS[ownerAddress] || null,
+      });
+    }
+
     const estimatedHolders = accounts.length >= 20 ? 1000 : accounts.length * 50;
 
     return {
       totalHolders: estimatedHolders,
-      holders: holdersWithOwners.filter((h) => h.percentage > 0),
+      holders,
     };
   } catch (err) {
     console.error("fetchTopHolders failed:", err);
     return { totalHolders: 0, holders: [] };
-  }
-}
-
-async function getTokenAccountOwner(
-  tokenAccountAddress: string
-): Promise<string | null> {
-  try {
-    const response = await rpcFetch<{
-      result?: { value?: { data?: { parsed?: { info?: { owner?: string } } } } };
-    }>(
-      {
-        jsonrpc: "2.0",
-        id: "account-info",
-        method: "getAccountInfo",
-        params: [tokenAccountAddress, { encoding: "jsonParsed" }],
-      },
-      300_000
-    );
-
-    return response.result?.value?.data?.parsed?.info?.owner || null;
-  } catch {
-    return null;
   }
 }
