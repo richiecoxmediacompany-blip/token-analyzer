@@ -1,14 +1,20 @@
 "use client";
 
-import { useCallback } from "react";
-import { Shield, Zap, Eye, BarChart3, Search } from "lucide-react";
+import { useCallback, useState } from "react";
+import { Shield, Zap, Eye, BarChart3, Search, Scale, Wallet } from "lucide-react";
 import TokenSearchBar from "@/components/TokenSearchBar";
 import AnalysisDashboard from "@/components/AnalysisDashboard";
 import { ProgressBar } from "@/components/LoadingState";
 import { useTokenAnalysis } from "@/lib/hooks";
 import { SolanaLogo, SolanaLogoMark } from "@/components/SolanaLogo";
+import ThemeToggle from "@/components/ThemeToggle";
+import TokenComparison from "@/components/TokenComparison";
+import WalletTracker from "@/components/WalletTracker";
+
+type Tab = "analyze" | "compare" | "wallet";
 
 export default function Home() {
+  const [activeTab, setActiveTab] = useState<Tab>("analyze");
   const {
     tokenInfo,
     holders,
@@ -41,9 +47,9 @@ export default function Home() {
   );
 
   return (
-    <div className="min-h-screen bg-[#050510] relative overflow-hidden">
-      {/* Background effects */}
-      <div className="fixed inset-0 pointer-events-none">
+    <div className="min-h-screen bg-[var(--background)] relative overflow-hidden">
+      {/* Background effects (dark mode only) */}
+      <div className="fixed inset-0 pointer-events-none dark:block hidden">
         {/* Gradient orbs */}
         <div className="absolute top-[-20%] right-[-10%] w-[600px] h-[600px] rounded-full bg-purple-600/[0.07] blur-[120px]" />
         <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-blue-600/[0.05] blur-[120px]" />
@@ -71,11 +77,14 @@ export default function Home() {
                 <p className="text-[10px] text-gray-500 -mt-0.5">Token Analyzer</p>
               </div>
             </div>
+            {/* Nav tabs */}
+            <div className="hidden md:flex items-center gap-1 glass-card rounded-xl p-1">
+              <NavTab active={activeTab === "analyze"} onClick={() => setActiveTab("analyze")} icon={<Search className="w-3.5 h-3.5" />} label="Analyze" />
+              <NavTab active={activeTab === "compare"} onClick={() => setActiveTab("compare")} icon={<Scale className="w-3.5 h-3.5" />} label="Compare" />
+              <NavTab active={activeTab === "wallet"} onClick={() => setActiveTab("wallet")} icon={<Wallet className="w-3.5 h-3.5" />} label="Wallet" />
+            </div>
             <div className="flex items-center gap-3">
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 glass-card rounded-xl">
-                <SolanaLogo className="w-3.5 h-3.5" />
-                <span className="text-xs text-gray-400">Solana</span>
-              </div>
+              <ThemeToggle />
               <div className="flex items-center gap-2 px-3 py-1.5 glass-card rounded-xl">
                 <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-lg shadow-emerald-400/50" />
                 <span className="text-xs text-gray-400">Live</span>
@@ -85,9 +94,32 @@ export default function Home() {
         </div>
       </header>
 
+      {/* Mobile nav tabs */}
+      <div className="md:hidden relative z-40 px-4 pt-4 no-print">
+        <div className="flex items-center gap-1 glass-card rounded-xl p-1">
+          <NavTab active={activeTab === "analyze"} onClick={() => setActiveTab("analyze")} icon={<Search className="w-3.5 h-3.5" />} label="Analyze" />
+          <NavTab active={activeTab === "compare"} onClick={() => setActiveTab("compare")} icon={<Scale className="w-3.5 h-3.5" />} label="Compare" />
+          <NavTab active={activeTab === "wallet"} onClick={() => setActiveTab("wallet")} icon={<Wallet className="w-3.5 h-3.5" />} label="Wallet" />
+        </div>
+      </div>
+
       <main className="relative z-10 max-w-7xl mx-auto px-4 py-8">
-        {/* Hero Section */}
-        {!hasResults && !isAnalyzing && (
+        {/* Compare Tab */}
+        {activeTab === "compare" && (
+          <div className="max-w-6xl mx-auto">
+            <TokenComparison />
+          </div>
+        )}
+
+        {/* Wallet Tracker Tab */}
+        {activeTab === "wallet" && (
+          <div className="max-w-6xl mx-auto">
+            <WalletTracker />
+          </div>
+        )}
+
+        {/* Analyze Tab - Hero Section */}
+        {activeTab === "analyze" && !hasResults && !isAnalyzing && (
           <div className="text-center py-12 md:py-20 relative">
             {/* Hero glow */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[300px] bg-purple-500/10 rounded-full blur-[100px] pointer-events-none" />
@@ -147,17 +179,17 @@ export default function Home() {
         )}
 
         {/* Search bar - shown when results visible */}
-        {(hasResults || isAnalyzing) && (
+        {activeTab === "analyze" && (hasResults || isAnalyzing) && (
           <div className="mb-8 no-print">
             <TokenSearchBar onSearch={handleSearch} isLoading={isAnalyzing} />
           </div>
         )}
 
         {/* Progress bar */}
-        {isAnalyzing && <ProgressBar sections={loading} />}
+        {activeTab === "analyze" && isAnalyzing && <ProgressBar sections={loading} />}
 
         {/* Results Dashboard */}
-        {hasResults && (
+        {activeTab === "analyze" && hasResults && (
           <AnalysisDashboard
             tokenInfo={tokenInfo}
             holders={holders}
@@ -186,6 +218,32 @@ export default function Home() {
         </div>
       </footer>
     </div>
+  );
+}
+
+function NavTab({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all flex-1 md:flex-none justify-center ${
+        active
+          ? "bg-purple-500/20 text-purple-300 shadow-sm border border-purple-500/20"
+          : "text-gray-500 hover:text-gray-300"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }
 
