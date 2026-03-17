@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cachedFetch } from "@/lib/api-client";
+import { cachedFetch, heliusRpcUrl } from "@/lib/api-client";
 import { isValidSolanaAddress } from "@/lib/utils";
 
 interface SuspiciousWallet {
@@ -24,50 +24,16 @@ const KNOWN_PROGRAMS = new Set([
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",     // Token Program
 ]);
 
-const RPC_ENDPOINTS = [
-  "https://api.mainnet-beta.solana.com",
-  "https://rpc.ankr.com/solana",
-];
-
 async function rpcCall<T>(body: object): Promise<T> {
-  const heliusKey = process.env.HELIUS_API_KEY;
-  const endpoints = heliusKey
-    ? [`https://mainnet.helius-rpc.com/?api-key=${heliusKey}`, ...RPC_ENDPOINTS]
-    : RPC_ENDPOINTS;
-
-  let lastError: Error | null = null;
-
-  for (const url of endpoints) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-        cache: "no-store",
-      });
-
-      clearTimeout(timeout);
-
-      if (!res.ok) {
-        throw new Error(`RPC ${res.status}: ${await res.text().catch(() => "")}`);
-      }
-
-      const json = await res.json();
-      if (json.error) {
-        throw new Error(`RPC error: ${JSON.stringify(json.error)}`);
-      }
-
-      return json as T;
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-    }
-  }
-
-  throw lastError || new Error("All RPC endpoints failed");
+  const rpcUrl = heliusRpcUrl();
+  return cachedFetch<T>(
+    rpcUrl,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+    30_000
+  );
 }
 
 function computeTokenAge(pairCreatedAt: number): string {
@@ -124,7 +90,7 @@ export async function GET(request: NextRequest) {
         };
       }>({
         jsonrpc: "2.0",
-        id: 1,
+        id: "snipers-largest",
         method: "getTokenLargestAccounts",
         params: [address],
       }),
@@ -139,7 +105,7 @@ export async function GET(request: NextRequest) {
         };
       }>({
         jsonrpc: "2.0",
-        id: 2,
+        id: "snipers-supply",
         method: "getTokenSupply",
         params: [address],
       }),
@@ -148,45 +114,59 @@ export async function GET(request: NextRequest) {
     const largestAccounts = largestResponse.result?.value || [];
     const totalSupply = supplyResponse.result?.value?.uiAmount || 1;
 
-    // 3. Resolve owners and analyze suspicious wallets
+    // 3. Batch-resolve owners using getMultipleAccounts (1 call instead of 10)
+    const topAccounts = largestAccounts.slice(0, 10);
+    const accountAddresses = topAccounts
+      .filter((a) => !KNOWN_PROGRAMS.has(a.address))
+      .map((a) => a.address);
+
+    let ownerMap: Record<string, string> = {};
+    if (accountAddresses.length > 0) {
+      try {
+        const multiResponse = await rpcCall<{
+          result?: {
+            value?: Array<{
+              data?: {
+                parsed?: {
+                  info?: { owner?: string };
+                };
+              };
+            } | null>;
+          };
+        }>({
+          jsonrpc: "2.0",
+          id: "snipers-owners",
+          method: "getMultipleAccounts",
+          params: [accountAddresses, { encoding: "jsonParsed" }],
+        });
+
+        const accountInfos = multiResponse.result?.value || [];
+        for (let i = 0; i < accountAddresses.length; i++) {
+          const info = accountInfos[i];
+          const owner = info?.data?.parsed?.info?.owner;
+          if (owner) {
+            ownerMap[accountAddresses[i]] = owner;
+          }
+        }
+      } catch {
+        // Fall back to using token account addresses
+      }
+    }
+
+    // 4. Analyze suspicious wallets
     const suspiciousWallets: SuspiciousWallet[] = [];
 
-    for (const account of largestAccounts.slice(0, 10)) {
+    for (const account of topAccounts) {
       const amount =
         account.uiAmount || parseFloat(account.uiAmountString || "0") || 0;
       if (amount <= 0) continue;
 
       const percentage = (amount / totalSupply) * 100;
 
-      // Skip known programs early
+      // Skip known programs
       if (KNOWN_PROGRAMS.has(account.address)) continue;
 
-      // Resolve the owner wallet address
-      let ownerAddress = account.address;
-      try {
-        const infoResponse = await rpcCall<{
-          result?: {
-            value?: {
-              data?: {
-                parsed?: {
-                  info?: { owner?: string };
-                };
-              };
-            };
-          };
-        }>({
-          jsonrpc: "2.0",
-          id: 3,
-          method: "getAccountInfo",
-          params: [account.address, { encoding: "jsonParsed" }],
-        });
-
-        ownerAddress =
-          infoResponse.result?.value?.data?.parsed?.info?.owner ||
-          account.address;
-      } catch {
-        // Keep token account address if owner lookup fails
-      }
+      const ownerAddress = ownerMap[account.address] || account.address;
 
       // Skip known programs after resolving owner
       if (KNOWN_PROGRAMS.has(ownerAddress)) continue;
@@ -200,7 +180,7 @@ export async function GET(request: NextRequest) {
         reasons.push(`Holds ${percentage.toFixed(1)}% of supply`);
       }
 
-      // Cross-reference with token age: new token + large holder = suspicious
+      // Cross-reference with token age
       if (pairCreatedAt) {
         const ageHours = (Date.now() - pairCreatedAt) / 3600000;
         if (ageHours < 24 && percentage > 3) {
@@ -220,7 +200,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 4. Compute aggregate risk
+    // 5. Compute aggregate risk
     const totalSuspiciousPercentage = suspiciousWallets.reduce(
       (sum, w) => sum + w.percentage,
       0
