@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #050510;
   --foreground: #ededed;
@@ -105,6 +107,36 @@ body {
 
 .solana-text {
   background: linear-gradient(135deg, #9945FF, #14F195);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Light theme overrides */
+html:not(.dark) {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+}
+
+html:not(.dark) body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+html:not(.dark) .glass-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.8));
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), 0 1px 0 rgba(255, 255, 255, 0.8) inset;
+}
+
+html:not(.dark) .card-3d {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.85));
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+}
+
+html:not(.dark) .solana-text {
+  background: linear-gradient(135deg, #7c3aed, #059669);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

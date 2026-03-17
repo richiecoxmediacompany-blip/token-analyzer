@@ -17,6 +17,8 @@ import LiquidityCard from "./LiquidityCard";
 import SecurityChecklist from "./SecurityChecklist";
 import TradingMetrics from "./TradingMetrics";
 import SocialSignals from "./SocialSignals";
+import SniperDetection from "./SniperDetection";
+import DexBreakdown from "./DexBreakdown";
 import { CardSkeleton } from "./LoadingState";
 
 interface AnalysisDashboardProps {
@@ -84,6 +86,14 @@ export default function AnalysisDashboard({
           {social && <SocialSignals social={social} />}
         </Section>
       </div>
+
+      {/* Sniper Detection & DEX Breakdown */}
+      {tokenAddress && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <SniperDetection tokenAddress={tokenAddress} />
+          <DexBreakdown tokenAddress={tokenAddress} />
+        </div>
+      )}
     </div>
   );
 }
