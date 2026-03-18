@@ -1,32 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cachedFetch } from "@/lib/api-client";
+import { cachedFetch, rpcFetch } from "@/lib/api-client";
 import { isValidSolanaAddress } from "@/lib/utils";
-
-const RPC_ENDPOINTS = [
-  ...(process.env.HELIUS_API_KEY
-    ? [`https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`]
-    : []),
-  "https://api.mainnet-beta.solana.com",
-];
-
-async function rpcCall<T>(body: object): Promise<T> {
-  for (const url of RPC_ENDPOINTS) {
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        cache: "no-store",
-      });
-      const json = await res.json();
-      if (json.error) throw new Error(JSON.stringify(json.error));
-      return json as T;
-    } catch {
-      continue;
-    }
-  }
-  throw new Error("All RPC endpoints failed");
-}
 
 export async function GET(request: NextRequest) {
   const address = request.nextUrl.searchParams.get("address");
@@ -36,7 +10,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Get SOL balance
-    const balanceRes = await rpcCall<{ result?: { value?: number } }>({
+    const balanceRes = await rpcFetch<{ result?: { value?: number } }>({
       jsonrpc: "2.0",
       id: 1,
       method: "getBalance",
@@ -62,7 +36,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get token accounts
-    const tokenRes = await rpcCall<{
+    const tokenRes = await rpcFetch<{
       result?: {
         value?: Array<{
           pubkey: string;

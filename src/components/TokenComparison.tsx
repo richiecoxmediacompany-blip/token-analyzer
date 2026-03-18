@@ -71,19 +71,19 @@ interface MetricRow {
 async function fetchTokenData(address: string): Promise<TokenData> {
   const [tokenInfoRes, holdersRes, liquidityRes, securityRes] =
     await Promise.allSettled([
-      fetch(`/api/token-info?address=${address}`).then((r) => {
+      fetch(`/api/token-info?address=${encodeURIComponent(address)}`).then((r) => {
         if (!r.ok) throw new Error(`Token info failed (${r.status})`);
         return r.json();
       }),
-      fetch(`/api/holders?address=${address}`).then((r) => {
+      fetch(`/api/holders?address=${encodeURIComponent(address)}`).then((r) => {
         if (!r.ok) throw new Error(`Holders failed (${r.status})`);
         return r.json();
       }),
-      fetch(`/api/liquidity?address=${address}`).then((r) => {
+      fetch(`/api/liquidity?address=${encodeURIComponent(address)}`).then((r) => {
         if (!r.ok) throw new Error(`Liquidity failed (${r.status})`);
         return r.json();
       }),
-      fetch(`/api/security?address=${address}`).then((r) => {
+      fetch(`/api/security?address=${encodeURIComponent(address)}`).then((r) => {
         if (!r.ok) throw new Error(`Security failed (${r.status})`);
         return r.json();
       }),
