@@ -65,7 +65,7 @@ export default function DexBreakdown({ tokenAddress }: DexBreakdownProps) {
     setLoading(true);
     setError(null);
 
-    fetch(`/api/dex-breakdown?address=${tokenAddress}`)
+    fetch(`/api/dex-breakdown?address=${encodeURIComponent(tokenAddress)}`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch");
         return res.json();

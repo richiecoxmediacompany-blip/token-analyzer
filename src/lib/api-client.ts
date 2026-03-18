@@ -12,13 +12,19 @@ export async function cachedFetch<T>(
     return cached.data as T;
   }
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+
   const response = await fetch(url, {
     ...options,
+    signal: controller.signal,
     headers: {
       "Content-Type": "application/json",
       ...options?.headers,
     },
   });
+
+  clearTimeout(timeout);
 
   if (!response.ok) {
     const text = await response.text().catch(() => "Unknown error");
@@ -26,6 +32,14 @@ export async function cachedFetch<T>(
   }
 
   const data = await response.json();
+
+  // Check for RPC error responses (HTTP 200 but JSON contains error)
+  if (data && typeof data === "object" && "error" in data && data.error) {
+    throw new Error(
+      `RPC error: ${typeof data.error === "string" ? data.error : JSON.stringify(data.error)}`
+    );
+  }
+
   CACHE.set(cacheKey, { data, expiry: Date.now() + cacheDurationMs });
   return data as T;
 }
@@ -44,6 +58,21 @@ export async function fetchWithRetry<T>(
     }
   }
   throw new Error("Unreachable");
+}
+
+/** Make a JSON-RPC call to the Solana RPC endpoint with retry + caching */
+export async function rpcFetch<T>(
+  body: object,
+): Promise<T> {
+  const url = heliusRpcUrl();
+  return fetchWithRetry<T>(
+    url,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+    2
+  );
 }
 
 export function heliusRpcUrl(): string {

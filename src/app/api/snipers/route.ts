@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cachedFetch, heliusRpcUrl } from "@/lib/api-client";
+import { cachedFetch, rpcFetch } from "@/lib/api-client";
 import { isValidSolanaAddress } from "@/lib/utils";
 
 interface SuspiciousWallet {
@@ -23,18 +23,6 @@ const KNOWN_PROGRAMS = new Set([
   "11111111111111111111111111111111",                  // System Program
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",     // Token Program
 ]);
-
-async function rpcCall<T>(body: object): Promise<T> {
-  const rpcUrl = heliusRpcUrl();
-  return cachedFetch<T>(
-    rpcUrl,
-    {
-      method: "POST",
-      body: JSON.stringify(body),
-    },
-    30_000
-  );
-}
 
 function computeTokenAge(pairCreatedAt: number): string {
   const ageMs = Date.now() - pairCreatedAt;
@@ -78,7 +66,7 @@ export async function GET(request: NextRequest) {
 
     // 2. Get largest token accounts and supply in parallel
     const [largestResponse, supplyResponse] = await Promise.all([
-      rpcCall<{
+      rpcFetch<{
         result?: {
           value?: Array<{
             address: string;
@@ -94,7 +82,7 @@ export async function GET(request: NextRequest) {
         method: "getTokenLargestAccounts",
         params: [address],
       }),
-      rpcCall<{
+      rpcFetch<{
         result?: {
           value?: {
             amount: string;
@@ -123,7 +111,7 @@ export async function GET(request: NextRequest) {
     let ownerMap: Record<string, string> = {};
     if (accountAddresses.length > 0) {
       try {
-        const multiResponse = await rpcCall<{
+        const multiResponse = await rpcFetch<{
           result?: {
             value?: Array<{
               data?: {

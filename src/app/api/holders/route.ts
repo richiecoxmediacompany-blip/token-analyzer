@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isValidSolanaAddress } from "@/lib/utils";
-import { cachedFetch, heliusRpcUrl } from "@/lib/api-client";
+import { rpcFetch } from "@/lib/api-client";
 import type { HolderAnalysis, Holder } from "@/types";
 
 const KNOWN_LABELS: Record<string, string> = {
@@ -61,24 +61,13 @@ export async function GET(request: NextRequest) {
   }
 }
 
-async function rpcCall<T>(body: object): Promise<T> {
-  const rpcUrl = heliusRpcUrl();
-  return cachedFetch<T>(
-    rpcUrl,
-    {
-      method: "POST",
-      body: JSON.stringify(body),
-    },
-    30_000
-  );
-}
 
 async function fetchTopHolders(
   mintAddress: string
 ): Promise<{ totalHolders: number; holders: Holder[] }> {
   // Step 1: Get largest token accounts and supply in parallel
   const [largestResponse, supplyResponse] = await Promise.all([
-    rpcCall<{
+    rpcFetch<{
       result?: {
         value?: Array<{
           address: string;
@@ -94,7 +83,7 @@ async function fetchTopHolders(
       method: "getTokenLargestAccounts",
       params: [mintAddress],
     }),
-    rpcCall<{
+    rpcFetch<{
       result?: {
         value?: {
           amount: string;
@@ -124,7 +113,7 @@ async function fetchTopHolders(
 
   let ownerMap: Record<string, string> = {};
   try {
-    const multiResponse = await rpcCall<{
+    const multiResponse = await rpcFetch<{
       result?: {
         value?: Array<{
           data?: {
